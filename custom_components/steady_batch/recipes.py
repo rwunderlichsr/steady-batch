@@ -41,8 +41,33 @@ def describe(recipe: dict, servings: int = 1) -> str:
         f"{index}. {step}" for index, step in enumerate(recipe["instructions"], start=1)
     )
     portion = "2 servings" if servings == 2 else "1 serving"
+    egg = "egg" in recipe["name"].lower()
+    fish = any(word in recipe["name"].lower() for word in ("salmon", "shrimp", "tuna"))
+    ahead = "1 plate" not in str(recipe.get("servings", "")).lower() and "|No cook|" not in recipe["key"]
+    if ahead and egg:
+        reheat = (
+            "REHEAT\n"
+            "Make ahead. Fridge 3 days.\n"
+            "1. This was cooked ahead. Reheat one portion. Do not cook it again.\n"
+            "2. Cover the box.\n"
+            "3. Microwave 60–90 seconds and stir once, or a covered pan on low for 3–4 minutes.\n"
+            "4. Stop when it is hot. More time makes the eggs rubbery.\n\n"
+        )
+    elif ahead:
+        days = "2" if fish else "4"
+        reheat = (
+            "REHEAT\n"
+            f"Make ahead. Fridge {days} days.\n"
+            "1. This was cooked ahead. Reheat one portion.\n"
+            "2. Cover it. Add a splash of water if it looks dry.\n"
+            "3. Microwave 60–90 seconds, or a covered pan on low until hot through.\n"
+            f"4. Use it within {days} days.\n\n"
+        )
+    else:
+        reheat = "COOK WHEN YOU EAT IT\nThis one is not a make-ahead meal.\n\n"
     return (
         f"{recipe['name']}\n"
+        f"{reheat}"
         f"{portion} · {recipe['style']} · {recipe['time']}\n"
         f"{protein}g protein · {calories} cal · "
         f"{recipe['carbs']} carbs · {recipe['sodium']} sodium\n\n"

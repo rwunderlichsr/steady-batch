@@ -61,6 +61,30 @@ function prepLabel(recipe) {
   return `Make ahead. One cook makes ${portions} portions. Fridge ${days} days.`;
 }
 
+function reheatSteps(recipe) {
+  const ahead = prepLabel(recipe).indexOf("Make ahead") === 0;
+  if (!ahead) return null;
+  const egg = /egg/i.test(`${recipe.name || ""} ${(recipe.ingredients || []).join(" ")}`);
+  const fish = /salmon|shrimp|tuna/i.test(recipe.name || "");
+  const days = (prepLabel(recipe).match(/Fridge (\d+)/) || [])[1] || (fish ? "2" : "4");
+  return {
+    badge: `Make ahead. Fridge ${days} days.`,
+    steps: egg
+      ? [
+          "This was cooked ahead. Reheat one portion. Do not cook it again.",
+          "Cover the box.",
+          "Microwave 60–90 seconds and stir once, or a covered pan on low for 3–4 minutes.",
+          "Stop when it is hot. More time makes the eggs rubbery.",
+        ]
+      : [
+          "This was cooked ahead. Reheat one portion.",
+          "Cover it. Add a splash of water if it looks dry.",
+          fish ? "Warm it gently, about 45–60 seconds. Do not reheat fish twice." : "Microwave 60–90 seconds, or a covered pan on low until hot through.",
+          `Use it within ${days} days.`,
+        ],
+  };
+}
+
 function amount(value) {
   const match = String(value).replace(/,/g, "").match(/\d+(\.\d+)?/);
   return match ? Number(match[0]) : 0;
@@ -739,12 +763,13 @@ class SteadyBatchCard extends HTMLElement {
         const recipe = slot ? findRecipe(this._recipes, slot.name) || recipeFromDescription(slot.description, slot.name) : null;
         const count = slot && slot.servings === 2 ? 2 : 1;
         const open = this._open && this._open.iso === iso && this._open.meal === meal;
+        const ahead = recipe && prepLabel(recipe).indexOf("Make ahead") === 0;
         const title = slot && slot.name ? `${slot.name}${count === 2 ? " ×2" : ""}` : "Add";
         const kcal = recipe ? `${Math.round(amount(recipe.calories) * count)}` : "";
         return `<button class="meal${slot && slot.name ? "" : " empty"}" type="button" data-date="${iso}" data-meal="${meal}" aria-pressed="${open ? "true" : "false"}">
             <span class="tick" aria-hidden="true"></span>
             <span class="slotname">${meal}</span>
-            <span class="dish">${esc(title)}</span>
+            <span class="dish">${esc(title)}${ahead ? " · Reheat" : ""}</span>
             <span class="kcal">${kcal}</span>
           </button>`;
       }).join("");
@@ -805,6 +830,10 @@ class SteadyBatchCard extends HTMLElement {
       this._cookMethod = key.includes("Sous Vide") ? "sousvide" : key.includes("Casserole") ? "oven" : "crockpot";
     }
     const way = recipe ? cookWay(recipe, this._cookMethod || "crockpot") : null;
+    const heat = recipe ? reheatSteps(recipe) : null;
+    const reheatBlock = heat
+      ? `<h4>Reheat</h4><p class="note">${esc(heat.badge)}</p><ol>${heat.steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>`
+      : `<p class="note">Cook this when you eat it. It is not a make-ahead meal.</p>`;
     const methodButtons = recipe && !String(recipe.key || "").includes("No cook")
       ? `<div class="seg" id="cook-method">${["crockpot", "oven", "stove"].map((name) => `<button type="button" data-cook="${name}" aria-pressed="${(this._cookMethod || "crockpot") === name ? "true" : "false"}">${name === "crockpot" ? "Crockpot" : name === "oven" ? "Oven" : "Stove"}</button>`).join("")}</div><p class="note">${esc(way.time)}</p>`
       : "";
@@ -818,7 +847,8 @@ class SteadyBatchCard extends HTMLElement {
         <p class="note">${esc(numberSource(recipe))}</p>
         <h4>Ingredients</h4>
         <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(count === 2 ? item : item)}</span></label></li>`).join("") || "<li>No ingredients on this one.</li>"}</ul>
-        <h4>Make it</h4>
+        ${reheatBlock}
+        <h4>${heat ? "Cook it the first time" : "Make it"}</h4>
         ${methodButtons}
         <ol>${(way ? way.steps : []).map((step) => `<li>${esc(step)}</li>`).join("") || "<li>No steps on this one.</li>"}</ol>
         <p class="note">${esc(way ? way.note : "")}</p>
