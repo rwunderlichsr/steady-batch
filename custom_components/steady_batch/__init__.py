@@ -66,7 +66,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig("/steady_batch/steady-batch-card.js", str(path), False)]
     )
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=5")
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=6")
     hass.data[CARD_KEY] = True
 
 
@@ -132,6 +132,8 @@ def _async_register_services(hass: HomeAssistant) -> None:
             return {"saved": 0}
         saved = 0
         kept: set[str] = set()
+        scope = {str(day)[:10] for day in call.data.get("dates") or []}
+        replace = bool(call.data.get("replace", True))
         for item in call.data["meals"]:
             recipe = recipe_by_name(item["recipe"])
             if recipe is None:
@@ -157,8 +159,14 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 }
             )
             saved += 1
+        if not replace and not scope:
+            scope = {str(item["date"])[:10] for item in call.data["meals"]}
         for uid in list(store.events):
-            if uid.startswith("steady-") and uid not in kept:
+            if not uid.startswith("steady-") or uid in kept:
+                continue
+            parts = uid.split("-")
+            day = "-".join(parts[1:4]) if len(parts) >= 5 else ""
+            if replace or day in scope:
                 store.remove(uid)
         await store.async_save()
         async_dispatcher_send(hass, SIGNAL)
@@ -215,7 +223,9 @@ def _async_register_services(hass: HomeAssistant) -> None:
                             vol.Optional("servings", default=1): vol.All(vol.Coerce(int), vol.In([1, 2])),
                         }
                     )
-                ]
+                ],
+                vol.Optional("replace", default=True): bool,
+                vol.Optional("dates"): [str],
             }
         ),
         supports_response=SupportsResponse.OPTIONAL,

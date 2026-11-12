@@ -4,6 +4,11 @@ function esc(value) {
   return String(value).split("\u0026").join("\u0026amp;").split("<").join("\u0026lt;").split('"').join("\u0026quot;");
 }
 
+function amount(value) {
+  const match = String(value).replace(/,/g, "").match(/\d+(\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
 function shoppingLines(planned, recipes, dates) {
   const counts = new Map();
   for (const iso of dates) {
@@ -17,6 +22,59 @@ function shoppingLines(planned, recipes, dates) {
     }
   }
   return [...counts.entries()].map(([line, count]) => (count > 1 ? `${count} × ${line}` : line));
+}
+
+function planDays(goal, recipes, count) {
+  const used = new Set();
+  const byMeal = Object.fromEntries(MEALS.map((meal) => [meal, recipes.filter((recipe) => recipe.meal === meal)]));
+  const days = [];
+  for (let salt = 0; salt < count; salt += 1) {
+    const choices = (meal) => {
+      const all = byMeal[meal] || [];
+      const fresh = all.filter((recipe) => !used.has(recipe.name));
+      const source = fresh.length >= 4 ? fresh : all;
+      const start = source.length ? (salt * 5) % source.length : 0;
+      return Array.from({ length: Math.min(6, source.length) }, (_, index) => source[(start + index) % source.length]);
+    };
+    let best = null;
+    for (const breakfast of choices("Breakfast")) {
+      for (const lunch of choices("Lunch")) {
+        for (const dinner of choices("Dinner")) {
+          for (const bCount of [1, 2]) {
+            for (const lCount of [1, 2]) {
+              for (const dCount of [1, 2]) {
+                const base = amount(breakfast.calories) * bCount + amount(lunch.calories) * lCount + amount(dinner.calories) * dCount;
+                const protein = amount(breakfast.protein) * bCount + amount(lunch.protein) * lCount + amount(dinner.protein) * dCount;
+                for (const snack of [null, ...choices("Snack")]) {
+                  const calories = base + (snack ? amount(snack.calories) : 0);
+                  const allProtein = protein + (snack ? amount(snack.protein) : 0);
+                  const diff = calories - goal;
+                  if (diff > 80) continue;
+                  let score = Math.abs(diff);
+                  if (diff < -100) score += 30;
+                  if (allProtein < 100) score += 70;
+                  if (!best || score < best.score) {
+                    best = {
+                      score,
+                      Breakfast: { name: breakfast.name, servings: bCount },
+                      Lunch: { name: lunch.name, servings: lCount },
+                      Dinner: { name: dinner.name, servings: dCount },
+                      Snack: snack ? { name: snack.name, servings: 1 } : null,
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (best) {
+      for (const meal of MEALS) if (best[meal]) used.add(best[meal].name);
+    }
+    days.push(best || {});
+  }
+  return days;
 }
 
 class SteadyBatchCard extends HTMLElement {
@@ -63,11 +121,15 @@ class SteadyBatchCard extends HTMLElement {
           .recipe li, ul.shop li { margin: 0 0 8px; }
           label.check { display: flex; gap: 8px; align-items: flex-start; }
           label.check input { width: 1.1rem; min-height: 1.1rem; margin-top: 0.2rem; }
-          #file { display: none; }
+          #plan { background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
         </style>
         <div class="wrap">
           <h2>Steady Batch</h2>
-          <p class="note">The plan is shared with the Steady Batch app. Change a meal here and it goes back to the app. Tap a meal for the recipe.</p>
+          <p class="note">This card plans on its own. The Steady Batch app is optional, and changes go both ways when it is connected.</p>
+          <label>Daily calories
+            <input id="goal" inputmode="numeric" placeholder="From Hume or MyFitnessPal" />
+          </label>
+          <button id="plan" type="button">Plan this week</button>
           <input id="file" type="file" accept="application/json,.json" />
           <button id="load" type="button">Load plan from the app</button>
           <p class="status" id="status"></p>
@@ -94,6 +156,9 @@ class SteadyBatchCard extends HTMLElement {
     this._span = "week";
     this._shopSpan = "week";
     this._open = null;
+    this._goal = root.getElementById("goal");
+    this._planButton = root.getElementById("plan");
+    root.getElementById("plan").addEventListener("click", () => this._plan());
     root.getElementById("load").addEventListener("click", () => root.getElementById("file").click());
     root.getElementById("file").addEventListener("change", (event) => this._loadFile(event.target.files && event.target.files[0]));
     root.getElementById("span").addEventListener("click", (event) => {
@@ -101,6 +166,7 @@ class SteadyBatchCard extends HTMLElement {
       if (!span) return;
       this._span = span;
       this._mark(root.getElementById("span"), "span", span);
+      this._planButton.textContent = span === "month" ? "Plan this month" : "Plan this week";
       this._render();
     });
     root.getElementById("shop-span").addEventListener("click", (event) => {
@@ -176,6 +242,10 @@ class SteadyBatchCard extends HTMLElement {
         };
       }
       this._planned = planned;
+      const sensor = this._hass.states["sensor.steady_batch_today"];
+      if (sensor && sensor.attributes && sensor.attributes.goal && !this._goal.value) {
+        this._goal.value = sensor.attributes.goal;
+      }
       this._render();
       if (!Object.keys(planned).length) this._status.textContent = "No plan yet. Load one from the Steady Batch app.";
     } catch (error) {
@@ -254,6 +324,37 @@ class SteadyBatchCard extends HTMLElement {
       this._status.textContent = recipe ? "Saved. The app will pick this up." : "Cleared. The app will pick this up.";
     } catch (error) {
       this._status.textContent = "Couldn't save that change.";
+    }
+  }
+
+  async _plan() {
+    const goal = Number(this._goal.value);
+    if (!goal || goal < 800) {
+      this._status.textContent = "Enter the daily calorie number from Hume or MyFitnessPal.";
+      return;
+    }
+    const dates = this._dates(this._spanCount());
+    this._status.textContent = "Planning…";
+    try {
+      const days = planDays(goal, await this._ensureRecipes(), dates.length);
+      const meals = [];
+      dates.forEach((day, index) => {
+        for (const meal of MEALS) {
+          const slot = days[index] && days[index][meal];
+          if (slot) meals.push({ date: day.iso, meal, recipe: slot.name, servings: slot.servings });
+        }
+      });
+      if (!meals.length) throw new Error("No meals fit that calorie number.");
+      await this._hass.callService("steady_batch", "set_goal", { calories: goal });
+      await this._hass.callService("steady_batch", "import_plan", {
+        meals,
+        replace: false,
+        dates: dates.map((day) => day.iso),
+      });
+      await this._refresh();
+      this._status.textContent = dates.length > 7 ? "This month is planned on the card." : "This week is planned on the card.";
+    } catch (error) {
+      this._status.textContent = error && error.message ? error.message : "Couldn't plan. Add the Steady Batch integration first.";
     }
   }
 
