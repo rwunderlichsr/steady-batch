@@ -14,21 +14,17 @@ Repository: https://github.com/rwunderlichsr/steady-batch
 
 The dashboard card is included. No separate resource file.
 
-Add the meal card:
+Add the meal card. It shows the week, opens the recipe under the meal you tap, and builds the grocery list on the same card.
 
 ```yaml
 type: custom:steady-batch-card
 ```
 
-Add the grocery list:
+The separate grocery card is optional. Print and Send are on both.
 
 ```yaml
 type: custom:steady-batch-grocery
 ```
-
-The meal card shows the week, opens the recipe under the meal you tap, and builds the grocery list on the same card.
-
-Add the meal card:
 
 ## Install without HACS
 
