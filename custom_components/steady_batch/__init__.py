@@ -66,7 +66,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig("/steady_batch/steady-batch-card.js", str(path), False)]
     )
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=4")
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=5")
     hass.data[CARD_KEY] = True
 
 
@@ -131,6 +131,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         if store is None:
             return {"saved": 0}
         saved = 0
+        kept: set[str] = set()
         for item in call.data["meals"]:
             recipe = recipe_by_name(item["recipe"])
             if recipe is None:
@@ -140,9 +141,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
             servings = 2 if int(item.get("servings") or 1) == 2 else 1
             (start_h, start_m), (end_h, end_m) = SLOT_CLOCK[meal]
             name = recipe["name"] + (" ×2" if servings == 2 else "")
+            uid = slot_uid(day, meal)
+            kept.add(uid)
             store.upsert(
                 {
-                    "uid": slot_uid(day, meal),
+                    "uid": uid,
                     "summary": f"{meal}: {name}",
                     "description": describe(recipe, servings),
                     "start": _local(day, start_h, start_m).isoformat(),
@@ -154,6 +157,9 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 }
             )
             saved += 1
+        for uid in list(store.events):
+            if uid.startswith("steady-") and uid not in kept:
+                store.remove(uid)
         await store.async_save()
         async_dispatcher_send(hass, SIGNAL)
         return {"saved": saved}

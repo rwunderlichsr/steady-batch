@@ -1,7 +1,7 @@
 const MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"];
 
 function esc(value) {
-  return String(value).split("\u0026").join("\u0026amp;").split("<").join("\u0026lt;");
+  return String(value).split("\u0026").join("\u0026amp;").split("<").join("\u0026lt;").split('"').join("\u0026quot;");
 }
 
 function shoppingLines(planned, recipes, dates) {
@@ -48,7 +48,9 @@ class SteadyBatchCard extends HTMLElement {
           h2 { margin: 0 0 4px; font-size: 1.35rem; }
           h3 { margin: 0 0 8px; font-size: 1rem; }
           p.note, .status { margin: 0 0 12px; color: var(--secondary-text-color); font-size: 0.9rem; }
-          button, input { width: 100%; min-height: 44px; border-radius: 10px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+          label, select { display: block; margin: 0 0 10px; font-size: 0.85rem; }
+          button, input, select { width: 100%; min-height: 44px; border-radius: 10px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+          select { margin-top: 4px; }
           .row { display: grid; gap: 8px; margin: 0 0 12px; }
           .row.two { grid-template-columns: 1fr 1fr; }
           .row.three { grid-template-columns: 1fr 1fr 1fr; }
@@ -65,7 +67,7 @@ class SteadyBatchCard extends HTMLElement {
         </style>
         <div class="wrap">
           <h2>Steady Batch</h2>
-          <p class="note">The plan comes from the Steady Batch app. Tap a meal for the recipe.</p>
+          <p class="note">The plan is shared with the Steady Batch app. Change a meal here and it goes back to the app. Tap a meal for the recipe.</p>
           <input id="file" type="file" accept="application/json,.json" />
           <button id="load" type="button">Load plan from the app</button>
           <p class="status" id="status"></p>
@@ -211,24 +213,48 @@ class SteadyBatchCard extends HTMLElement {
     }
     const slot = this._planned[this._open.iso + "|" + this._open.meal];
     const recipe = slot && this._recipes ? this._recipes.find((item) => item.name === slot.name) : null;
-    if (!recipe) {
-      this._recipe.hidden = false;
-      this._recipe.innerHTML = `<p class="note">Nothing planned for that ${esc(this._open.meal.toLowerCase())}.</p>`;
-      return;
-    }
-    const ingredients = (recipe.ingredients || [])
-      .map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(item)}</span></label></li>`)
+    const choices = (this._recipes || []).filter((item) => item.meal === this._open.meal || String(item.key || "").startsWith(this._open.meal + "|"));
+    const options = [`<option value="">Open</option>`]
+      .concat(
+        choices.map(
+          (item) =>
+            `<option value="${esc(item.name)}" ${recipe && recipe.name === item.name ? "selected" : ""}>${esc(item.name)}</option>`,
+        ),
+      )
       .join("");
-    const steps = (recipe.instructions || []).map((step) => `<li>${esc(step)}</li>`).join("");
+    const body = recipe
+      ? `<p class="note">${esc(this._open.meal)} · ${esc(recipe.calories)} cal · ${esc(recipe.protein)} protein · ${esc(recipe.carbs)} carbs · ${esc(recipe.time || "")}</p>
+      <h3>Ingredients</h3>
+      <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(item)}</span></label></li>`).join("")}</ul>
+      <h3>Make it</h3>
+      <ol>${(recipe.instructions || []).map((step) => `<li>${esc(step)}</li>`).join("")}</ol>
+      <p class="note">${esc(recipe.doneWhen || "")}</p>`
+      : `<p class="note">Nothing planned for that ${esc(this._open.meal.toLowerCase())} yet.</p>`;
     this._recipe.hidden = false;
     this._recipe.innerHTML = `
-      <h2>${esc(recipe.name)}</h2>
-      <p class="note">${esc(this._open.meal)} · ${esc(recipe.calories)} cal · ${esc(recipe.protein)} protein · ${esc(recipe.carbs)} carbs · ${esc(recipe.time || "")}</p>
-      <h3>Ingredients</h3>
-      <ul>${ingredients}</ul>
-      <h3>Make it</h3>
-      <ol>${steps}</ol>
-      <p class="note">${esc(recipe.doneWhen || "")}</p>`;
+      <h2>${recipe ? esc(recipe.name) : esc(this._open.meal)}</h2>
+      <label>Change this meal
+        <select id="pick">${options}</select>
+      </label>
+      ${body}`;
+    const opened = { iso: this._open.iso, meal: this._open.meal };
+    this._recipe.querySelector("#pick").addEventListener("change", (event) => {
+      this._saveSlot(opened.iso, opened.meal, event.target.value);
+    });
+  }
+
+  async _saveSlot(date, meal, recipe) {
+    this._status.textContent = "Saving…";
+    try {
+      if (!recipe) await this._hass.callService("steady_batch", "clear_meal", { date, meal });
+      else await this._hass.callService("steady_batch", "set_meal", { date, meal, recipe, servings: 1 });
+      await this._refresh();
+      this._open = { iso: date, meal };
+      this._render();
+      this._status.textContent = recipe ? "Saved. The app will pick this up." : "Cleared. The app will pick this up.";
+    } catch (error) {
+      this._status.textContent = "Couldn't save that change.";
+    }
   }
 
   _renderShop() {
