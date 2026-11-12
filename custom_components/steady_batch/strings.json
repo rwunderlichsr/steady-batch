@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Steady Batch",
+        "description": "Adds a meal calendar. High protein, low calorie, low carb, no added salt. Plan the week from the Steady Batch dashboard card, or from Developer tools → Actions."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Steady Batch is already set up."
+    }
+  }
+}
