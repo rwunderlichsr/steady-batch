@@ -17,6 +17,7 @@ class MealStore:
         self.events: dict[str, dict] = {}
         self.goal: int | None = None
         self.ratings: dict[str, str] = {}
+        self.skip_proteins: list[str] = []
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -26,9 +27,18 @@ class MealStore:
         self.goal = goal if isinstance(goal, int) else None
         ratings = data.get("ratings", {})
         self.ratings = ratings if isinstance(ratings, dict) else {}
+        skipped = data.get("skip_proteins", [])
+        self.skip_proteins = [str(item) for item in skipped] if isinstance(skipped, list) else []
 
     async def async_save(self) -> None:
-        await self._store.async_save({"events": self.events, "goal": self.goal, "ratings": self.ratings})
+        await self._store.async_save(
+            {
+                "events": self.events,
+                "goal": self.goal,
+                "ratings": self.ratings,
+                "skip_proteins": self.skip_proteins,
+            }
+        )
 
     def upsert(self, event: dict) -> None:
         self.events[event["uid"]] = event

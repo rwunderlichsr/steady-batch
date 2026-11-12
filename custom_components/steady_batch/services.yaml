@@ -266,7 +266,19 @@ set_rating:
             - none
 get_ratings:
   name: Get ratings
-  description: Liked and disliked meals saved on this Home Assistant.
+  description: Liked meals, disliked meals, and proteins left out of the plan.
+set_preferences:
+  name: Set preferences
+  description: Save likes, dislikes, and proteins left out, from the app or the card.
+  fields:
+    ratings:
+      name: Ratings
+      selector:
+        object:
+    skip_proteins:
+      name: Proteins to leave out
+      selector:
+        object:
 import_plan:
   name: Import plan
   description: Load the meals sent from the Steady Batch app.

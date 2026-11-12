@@ -66,7 +66,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig("/steady_batch/steady-batch-card.js", str(path), False)]
     )
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=11")
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=12")
     hass.data[CARD_KEY] = True
 
 
@@ -129,8 +129,8 @@ def _async_register_services(hass: HomeAssistant) -> None:
     async def get_ratings(call: ServiceCall) -> dict:
         store = _first_store(hass)
         if store is None:
-            return {"ratings": {}, "goal": None}
-        return {"ratings": store.ratings, "goal": store.goal}
+            return {"ratings": {}, "goal": None, "skip_proteins": []}
+        return {"ratings": store.ratings, "goal": store.goal, "skip_proteins": store.skip_proteins}
 
     async def set_rating(call: ServiceCall) -> None:
         store = _first_store(hass)
@@ -143,6 +143,36 @@ def _async_register_services(hass: HomeAssistant) -> None:
         else:
             store.ratings[name] = rating
         await store.async_save()
+
+    async def set_preferences(call: ServiceCall) -> None:
+        store = _first_store(hass)
+        if store is None:
+            return
+        allowed = {
+            "Chicken",
+            "Turkey",
+            "Beef",
+            "Pork",
+            "Salmon",
+            "Eggs",
+            "Yogurt",
+            "Cottage cheese",
+            "Tuna",
+            "Shrimp",
+            "White fish",
+            "Beans",
+        }
+        incoming = call.data.get("ratings") or {}
+        if isinstance(incoming, dict):
+            store.ratings = {
+                str(key)[:180]: value
+                for key, value in incoming.items()
+                if value in ("like", "dislike")
+            }
+        skipped = call.data.get("skip_proteins") or []
+        store.skip_proteins = [item for item in skipped if item in allowed]
+        await store.async_save()
+        async_dispatcher_send(hass, SIGNAL)
 
     async def import_plan(call: ServiceCall) -> dict:
         store = _first_store(hass)
@@ -240,6 +270,17 @@ def _async_register_services(hass: HomeAssistant) -> None:
             {
                 vol.Required("recipe"): str,
                 vol.Required("rating"): vol.In(["like", "dislike", "none"]),
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "set_preferences",
+        set_preferences,
+        schema=vol.Schema(
+            {
+                vol.Optional("ratings", default={}): dict,
+                vol.Optional("skip_proteins", default=[]): [str],
             }
         ),
     )

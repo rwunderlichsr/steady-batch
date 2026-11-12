@@ -33,6 +33,20 @@ function shoppingLines(planned, recipes, dates) {
   return [...counts.entries()].map(([line, count]) => (count > 1 ? `${count} × ${line}` : line));
 }
 
+function numberSource(recipe) {
+  const published = String(recipe.key || "").includes("|DASH|") || String(recipe.tips || "").indexOf("NHLBI") === 0;
+  return published ? "NHLBI published serving. Log this number." : "Estimated. Weigh a cooked portion before you treat this as exact.";
+}
+
+function marked(set, recipe) {
+  return Boolean(set && recipe && (set.has(recipe.name) || set.has(recipe.key)));
+}
+
+function ratingOf(map, recipe) {
+  if (!map || !recipe) return "";
+  return map[recipe.key] || map[recipe.name] || "";
+}
+
 function planDays(goal, recipes, count, disliked, liked, skipped) {
   const blocked = disliked || new Set();
   const loved = liked || new Set();
@@ -42,7 +56,7 @@ function planDays(goal, recipes, count, disliked, liked, skipped) {
   const days = [];
   for (let salt = 0; salt < count; salt += 1) {
     const choices = (meal) => {
-      const all = (byMeal[meal] || []).filter((recipe) => !blocked.has(recipe.name) && !out.has(String(recipe.key || "").split("|")[1]));
+      const all = (byMeal[meal] || []).filter((recipe) => !marked(blocked, recipe) && !out.has(String(recipe.key || "").split("|")[1]));
       const fresh = all.filter((recipe) => !used.has(recipe.name));
       const source = fresh.length >= 4 ? fresh : all;
       const start = source.length ? (salt * 5) % source.length : 0;
@@ -65,9 +79,9 @@ function planDays(goal, recipes, count, disliked, liked, skipped) {
                   let score = Math.abs(diff);
                   if (diff < -100) score += 30;
                   if (allProtein < 100) score += 70;
-                  if (loved.has(breakfast.name)) score -= 25;
-                  if (loved.has(lunch.name)) score -= 25;
-                  if (loved.has(dinner.name)) score -= 25;
+                  if (marked(loved, breakfast)) score -= 25;
+                  if (marked(loved, lunch)) score -= 25;
+                  if (marked(loved, dinner)) score -= 25;
                   if (dinner.style === "Slow Cooker" || dinner.style === "Casserole") score -= 8;
                   if (!best || score < best.score) {
                     best = {
@@ -200,6 +214,10 @@ class SteadyBatchCard extends HTMLElement {
         else this._skip.add(name);
         localStorage.setItem("steady-batch-skip", JSON.stringify([...this._skip]));
         this._paintSkip();
+        this._hass.callService("steady_batch", "set_preferences", {
+          ratings: this._ratings || {},
+          skip_proteins: [...this._skip],
+        }).catch(() => {});
       });
       skip.appendChild(button);
     });
@@ -278,6 +296,10 @@ class SteadyBatchCard extends HTMLElement {
         const rated = await this._hass.callService("steady_batch", "get_ratings", {}, undefined, undefined, true);
         const ratedBody = rated?.response || rated || {};
         this._ratings = ratedBody.ratings || {};
+        if (Array.isArray(ratedBody.skip_proteins)) {
+          this._skip = new Set(ratedBody.skip_proteins.filter((name) => PROTEINS.includes(name)));
+          if (this._paintSkip) this._paintSkip();
+        }
         if (ratedBody.goal && !this._goal.value) this._goal.value = ratedBody.goal;
       } catch (error) {
         this._ratings = this._ratings || {};
@@ -357,16 +379,17 @@ class SteadyBatchCard extends HTMLElement {
     const matchButtons = matches
       .map(
         (item) =>
-          `<button type="button" data-recipe="${esc(item.name)}" aria-pressed="${recipe && recipe.name === item.name ? "true" : "false"}">${esc(item.name)}<small>${esc(item.protein)} protein · ${esc(item.calories)} cal${this._ratings[item.name] === "dislike" ? " · disliked" : ""}</small></button>`,
+          `<button type="button" data-recipe="${esc(item.name)}" aria-pressed="${recipe && recipe.name === item.name ? "true" : "false"}">${esc(item.name)}<small>${esc(item.protein)} protein · ${esc(item.calories)} cal · ${esc(numberSource(item))}${ratingOf(this._ratings, item) === "dislike" ? " · disliked" : ""}</small></button>`,
       )
       .join("");
-    const rating = recipe ? this._ratings[recipe.name] : "";
+    const rating = recipe ? ratingOf(this._ratings, recipe) : "";
     const body = recipe
       ? `<div class="rate">
           <button type="button" data-rate="like" aria-pressed="${rating === "like" ? "true" : "false"}">Like</button>
           <button type="button" data-rate="dislike" aria-pressed="${rating === "dislike" ? "true" : "false"}">Dislike</button>
         </div>
         <p class="note">${esc(this._open.meal)} · ${esc(recipe.calories)} cal · ${esc(recipe.protein)} protein · ${esc(recipe.carbs)} carbs · ${esc(recipe.time || "")}</p>
+        <p class="note">${esc(numberSource(recipe))}</p>
       <h3>Ingredients</h3>
       <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(item)}</span></label></li>`).join("")}</ul>
       <h3>Make it</h3>
@@ -494,11 +517,17 @@ class SteadyBatchCard extends HTMLElement {
   }
 
   async _rate(name, rating) {
-    const next = this._ratings[name] === rating ? "none" : rating;
+    const recipe = (this._recipes || []).find((item) => item.name === name);
+    const id = recipe && recipe.key ? recipe.key : name;
+    const next = ratingOf(this._ratings, recipe || { name, key: id }) === rating ? "none" : rating;
     try {
-      await this._hass.callService("steady_batch", "set_rating", { recipe: name, rating: next });
-      if (next === "none") delete this._ratings[name];
-      else this._ratings[name] = next;
+      await this._hass.callService("steady_batch", "set_rating", { recipe: id, rating: next });
+      if (recipe) {
+        delete this._ratings[recipe.name];
+        delete this._ratings[recipe.key];
+      }
+      delete this._ratings[name];
+      if (next !== "none") this._ratings[id] = next;
       this._renderRecipe();
       this._status.textContent = next === "dislike" ? "Disliked. The next plan will skip it." : next === "like" ? "Liked." : "Rating cleared.";
     } catch (error) {
