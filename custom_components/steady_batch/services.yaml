@@ -246,6 +246,27 @@ set_goal:
           min: 800
           max: 4000
           mode: box
+set_rating:
+  name: Set rating
+  description: Like or dislike a meal. A dislike is left out of the next plan.
+  fields:
+    recipe:
+      name: Recipe
+      required: true
+      selector:
+        text:
+    rating:
+      name: Rating
+      required: true
+      selector:
+        select:
+          options:
+            - like
+            - dislike
+            - none
+get_ratings:
+  name: Get ratings
+  description: Liked and disliked meals saved on this Home Assistant.
 import_plan:
   name: Import plan
   description: Load the meals sent from the Steady Batch app.

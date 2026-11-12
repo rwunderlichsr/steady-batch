@@ -24,13 +24,14 @@ function shoppingLines(planned, recipes, dates) {
   return [...counts.entries()].map(([line, count]) => (count > 1 ? `${count} × ${line}` : line));
 }
 
-function planDays(goal, recipes, count) {
+function planDays(goal, recipes, count, disliked) {
+  const blocked = disliked || new Set();
   const used = new Set();
   const byMeal = Object.fromEntries(MEALS.map((meal) => [meal, recipes.filter((recipe) => recipe.meal === meal)]));
   const days = [];
   for (let salt = 0; salt < count; salt += 1) {
     const choices = (meal) => {
-      const all = byMeal[meal] || [];
+      const all = (byMeal[meal] || []).filter((recipe) => !blocked.has(recipe.name));
       const fresh = all.filter((recipe) => !used.has(recipe.name));
       const source = fresh.length >= 4 ? fresh : all;
       const start = source.length ? (salt * 5) % source.length : 0;
@@ -114,7 +115,7 @@ class SteadyBatchCard extends HTMLElement {
           .row.three { grid-template-columns: 1fr 1fr 1fr; }
           button[aria-pressed="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff); }
           button.meal { text-align: left; padding: 8px 12px; margin: 0 0 8px; }
-          button.meal small { display: block; font-size: 0.95rem; }
+          .matches button small, button.meal small { display: block; font-size: 0.85rem; }
           .day { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--secondary-background-color); }
           .recipe { margin: 0 0 16px; padding: 12px; border-radius: 12px; background: var(--secondary-background-color); }
           .recipe ol, .recipe ul, ul.shop { margin: 8px 0 0; padding-left: 1.2rem; }
@@ -122,6 +123,9 @@ class SteadyBatchCard extends HTMLElement {
           label.check { display: flex; gap: 8px; align-items: flex-start; }
           label.check input { width: 1.1rem; min-height: 1.1rem; margin-top: 0.2rem; }
           #plan { background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
+          #file { display: none; }
+          .matches { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+          .rate { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 12px; }
         </style>
         <div class="wrap">
           <h2>Steady Batch</h2>
@@ -146,6 +150,8 @@ class SteadyBatchCard extends HTMLElement {
             <button type="button" data-shop="month" aria-pressed="false">Month</button>
           </div>
           <ul class="shop" id="shop"></ul>
+          <button id="download" type="button">Download shopping list</button>
+          <button id="ha-list" type="button">Add to Home Assistant shopping list</button>
         </div>
       </ha-card>`;
     this._status = root.getElementById("status");
@@ -156,6 +162,8 @@ class SteadyBatchCard extends HTMLElement {
     this._span = "week";
     this._shopSpan = "week";
     this._open = null;
+    this._ratings = {};
+    this._query = "";
     this._goal = root.getElementById("goal");
     this._planButton = root.getElementById("plan");
     root.getElementById("plan").addEventListener("click", () => this._plan());
@@ -176,6 +184,8 @@ class SteadyBatchCard extends HTMLElement {
       this._mark(root.getElementById("shop-span"), "shop", shop);
       this._renderShop();
     });
+    root.getElementById("download").addEventListener("click", () => this._download());
+    root.getElementById("ha-list").addEventListener("click", () => this._toShoppingList());
     this._render();
   }
 
@@ -219,6 +229,14 @@ class SteadyBatchCard extends HTMLElement {
   async _refresh() {
     try {
       await this._ensureRecipes();
+      try {
+        const rated = await this._hass.callService("steady_batch", "get_ratings", {}, undefined, undefined, true);
+        const ratedBody = rated?.response || rated || {};
+        this._ratings = ratedBody.ratings || {};
+        if (ratedBody.goal && !this._goal.value) this._goal.value = ratedBody.goal;
+      } catch (error) {
+        this._ratings = this._ratings || {};
+      }
       const response = await this._hass.callService(
         "calendar",
         "get_events",
@@ -247,7 +265,7 @@ class SteadyBatchCard extends HTMLElement {
         this._goal.value = sensor.attributes.goal;
       }
       this._render();
-      if (!Object.keys(planned).length) this._status.textContent = "No plan yet. Load one from the Steady Batch app.";
+      if (!Object.keys(planned).length) this._status.textContent = "No meals yet. Plan the week on this card, or load a plan from the app.";
     } catch (error) {
       this._status.textContent = "Add the Steady Batch integration, then reload this card.";
     }
@@ -284,32 +302,56 @@ class SteadyBatchCard extends HTMLElement {
     const slot = this._planned[this._open.iso + "|" + this._open.meal];
     const recipe = slot && this._recipes ? this._recipes.find((item) => item.name === slot.name) : null;
     const choices = (this._recipes || []).filter((item) => item.meal === this._open.meal || String(item.key || "").startsWith(this._open.meal + "|"));
-    const options = [`<option value="">Open</option>`]
-      .concat(
-        choices.map(
-          (item) =>
-            `<option value="${esc(item.name)}" ${recipe && recipe.name === item.name ? "selected" : ""}>${esc(item.name)}</option>`,
-        ),
+    const needle = this._query.trim().toLowerCase();
+    const matches = choices
+      .filter((item) => !needle || item.name.toLowerCase().includes(needle))
+      .slice(0, 8);
+    const matchButtons = matches
+      .map(
+        (item) =>
+          `<button type="button" data-recipe="${esc(item.name)}" aria-pressed="${recipe && recipe.name === item.name ? "true" : "false"}">${esc(item.name)}<small>${esc(item.protein)} protein · ${esc(item.calories)} cal${this._ratings[item.name] === "dislike" ? " · disliked" : ""}</small></button>`,
       )
       .join("");
+    const rating = recipe ? this._ratings[recipe.name] : "";
     const body = recipe
-      ? `<p class="note">${esc(this._open.meal)} · ${esc(recipe.calories)} cal · ${esc(recipe.protein)} protein · ${esc(recipe.carbs)} carbs · ${esc(recipe.time || "")}</p>
+      ? `<div class="rate">
+          <button type="button" data-rate="like" aria-pressed="${rating === "like" ? "true" : "false"}">Like</button>
+          <button type="button" data-rate="dislike" aria-pressed="${rating === "dislike" ? "true" : "false"}">Dislike</button>
+        </div>
+        <p class="note">${esc(this._open.meal)} · ${esc(recipe.calories)} cal · ${esc(recipe.protein)} protein · ${esc(recipe.carbs)} carbs · ${esc(recipe.time || "")}</p>
       <h3>Ingredients</h3>
       <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(item)}</span></label></li>`).join("")}</ul>
       <h3>Make it</h3>
       <ol>${(recipe.instructions || []).map((step) => `<li>${esc(step)}</li>`).join("")}</ol>
       <p class="note">${esc(recipe.doneWhen || "")}</p>`
-      : `<p class="note">Nothing planned for that ${esc(this._open.meal.toLowerCase())} yet.</p>`;
+      : `<p class="note">Nothing planned for that ${esc(this._open.meal.toLowerCase())} yet. Search and tap one.</p>`;
     this._recipe.hidden = false;
     this._recipe.innerHTML = `
       <h2>${recipe ? esc(recipe.name) : esc(this._open.meal)}</h2>
-      <label>Change this meal
-        <select id="pick">${options}</select>
+      <label>Find a ${esc(this._open.meal.toLowerCase())}
+        <input id="find" value="${esc(this._query)}" placeholder="Buffalo, eggs, yogurt" />
       </label>
+      <div class="matches">${matchButtons || "<p class='note'>No match.</p>"}</div>
+      <button type="button" id="clear-slot">Clear this meal</button>
       ${body}`;
     const opened = { iso: this._open.iso, meal: this._open.meal };
-    this._recipe.querySelector("#pick").addEventListener("change", (event) => {
-      this._saveSlot(opened.iso, opened.meal, event.target.value);
+    const find = this._recipe.querySelector("#find");
+    find.addEventListener("input", () => {
+      this._query = find.value;
+      this._renderRecipe();
+      const next = this._recipe.querySelector("#find");
+      if (next) {
+        next.focus();
+        const end = next.value.length;
+        next.setSelectionRange(end, end);
+      }
+    });
+    this._recipe.querySelectorAll("[data-recipe]").forEach((button) => {
+      button.addEventListener("click", () => this._saveSlot(opened.iso, opened.meal, button.dataset.recipe));
+    });
+    this._recipe.querySelector("#clear-slot").addEventListener("click", () => this._saveSlot(opened.iso, opened.meal, ""));
+    this._recipe.querySelectorAll("[data-rate]").forEach((button) => {
+      button.addEventListener("click", () => this._rate(recipe.name, button.dataset.rate));
     });
   }
 
@@ -336,7 +378,8 @@ class SteadyBatchCard extends HTMLElement {
     const dates = this._dates(this._spanCount());
     this._status.textContent = "Planning…";
     try {
-      const days = planDays(goal, await this._ensureRecipes(), dates.length);
+      const blocked = new Set(Object.entries(this._ratings || {}).filter((entry) => entry[1] === "dislike").map((entry) => entry[0]));
+      const days = planDays(goal, await this._ensureRecipes(), dates.length, blocked);
       const meals = [];
       dates.forEach((day, index) => {
         for (const meal of MEALS) {
@@ -362,6 +405,54 @@ class SteadyBatchCard extends HTMLElement {
     const dates = this._dates(this._shopCount()).map((day) => day.iso);
     const lines = shoppingLines(this._planned, this._recipes || [], dates);
     this._shop.innerHTML = lines.length ? lines.map((line) => `<li>${esc(line)}</li>`).join("") : "<li>No meals in this range.</li>";
+  }
+
+  _shopLines() {
+    return shoppingLines(this._planned, this._recipes || [], this._dates(this._shopCount()).map((day) => day.iso));
+  }
+
+  _download() {
+    const lines = this._shopLines();
+    if (!lines.length) {
+      this._status.textContent = "Plan a meal first. The list comes from those meals.";
+      return;
+    }
+    const file = new Blob([`${lines.join("\n")}\n`], { type: "text/plain" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "steady-batch-shopping-list.txt";
+    link.click();
+    URL.revokeObjectURL(url);
+    this._status.textContent = "Shopping list downloaded.";
+  }
+
+  async _toShoppingList() {
+    const lines = this._shopLines();
+    if (!lines.length) {
+      this._status.textContent = "Plan a meal first. The list comes from those meals.";
+      return;
+    }
+    this._status.textContent = "Adding items…";
+    try {
+      for (const name of lines) await this._hass.callService("shopping_list", "add_item", { name });
+      this._status.textContent = `Added ${lines.length} items to the Home Assistant shopping list.`;
+    } catch (error) {
+      this._status.textContent = "Download still works. To send it to your phone, enable the Shopping List integration.";
+    }
+  }
+
+  async _rate(name, rating) {
+    const next = this._ratings[name] === rating ? "none" : rating;
+    try {
+      await this._hass.callService("steady_batch", "set_rating", { recipe: name, rating: next });
+      if (next === "none") delete this._ratings[name];
+      else this._ratings[name] = next;
+      this._renderRecipe();
+      this._status.textContent = next === "dislike" ? "Disliked. The next plan will skip it." : next === "like" ? "Liked." : "Rating cleared.";
+    } catch (error) {
+      this._status.textContent = "Couldn't save that rating. Update Steady Batch and restart.";
+    }
   }
 
   async _loadFile(file) {

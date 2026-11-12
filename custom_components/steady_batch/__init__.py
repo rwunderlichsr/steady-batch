@@ -66,7 +66,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig("/steady_batch/steady-batch-card.js", str(path), False)]
     )
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=6")
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=7")
     hass.data[CARD_KEY] = True
 
 
@@ -125,6 +125,24 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     async def list_recipes(call: ServiceCall) -> dict:
         return {"recipes": load_recipes()}
+
+    async def get_ratings(call: ServiceCall) -> dict:
+        store = _first_store(hass)
+        if store is None:
+            return {"ratings": {}, "goal": None}
+        return {"ratings": store.ratings, "goal": store.goal}
+
+    async def set_rating(call: ServiceCall) -> None:
+        store = _first_store(hass)
+        if store is None:
+            return
+        name = call.data["recipe"]
+        rating = call.data["rating"]
+        if rating == "none":
+            store.ratings.pop(name, None)
+        else:
+            store.ratings[name] = rating
+        await store.async_save()
 
     async def import_plan(call: ServiceCall) -> dict:
         store = _first_store(hass)
@@ -207,6 +225,23 @@ def _async_register_services(hass: HomeAssistant) -> None:
         "list_recipes",
         list_recipes,
         supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "get_ratings",
+        get_ratings,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "set_rating",
+        set_rating,
+        schema=vol.Schema(
+            {
+                vol.Required("recipe"): str,
+                vol.Required("rating"): vol.In(["like", "dislike", "none"]),
+            }
+        ),
     )
     hass.services.async_register(
         DOMAIN,
