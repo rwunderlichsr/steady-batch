@@ -248,7 +248,14 @@ const CARD_CSS = `
   .daytop { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 6px 4px; }
   .daytop h3 { margin: 0; font-size: 0.95rem; }
   .tally { font-size: 0.75rem; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
-  button.meal { width: 100%; display: grid; grid-template-columns: 4.8rem minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; min-height: 42px; margin: 0; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; }
+  .seg.two { grid-template-columns: 1fr 1fr; margin: 0 12px 10px; }
+  button.meal { width: 100%; display: grid; grid-template-columns: 3px 4.4rem minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; min-height: 44px; margin: 0; padding: 4px 8px 4px 0; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; }
+  .tick { width: 3px; height: 26px; border-radius: 99px; background: var(--divider-color); }
+  button.meal[data-meal="Breakfast"] .tick { background: #c4922a; }
+  button.meal[data-meal="Lunch"] .tick { background: #2f7d5b; }
+  button.meal[data-meal="Dinner"] .tick { background: #c45c26; }
+  button.meal[data-meal="Snack"] .tick { background: #5d6e88; }
+  .day.today { border-color: transparent; box-shadow: inset 3px 0 0 var(--primary-color); }
   button.meal[aria-pressed="true"], button.meal:hover { background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
   .slotname { font-size: 0.66rem; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
   .dish { font-size: 0.95rem; font-weight: 650; line-height: 1.25; }
@@ -330,7 +337,13 @@ class SteadyBatchCard extends HTMLElement {
             <button type="button" data-view="shop">Shop</button>
             <button type="button" data-view="plan">Plan</button>
           </nav>
-          <div id="view-menu"><div id="days"></div></div>
+          <div id="view-menu">
+            <div class="seg two" id="menu-span">
+              <button type="button" data-span="day">Day</button>
+              <button type="button" data-span="week" aria-pressed="true">Week</button>
+            </div>
+            <div id="days"></div>
+          </div>
           <div id="view-recipe" hidden>
             <div class="panel" id="recipe-body"><p class="note">Tap a meal on the menu.</p></div>
           </div>
@@ -400,6 +413,8 @@ class SteadyBatchCard extends HTMLElement {
     const titles = { day: "Today", week: "This week", month: "This month" };
     if (this._fixedSpan) {
       root.getElementById("span").hidden = true;
+      const menuSpan = root.getElementById("menu-span");
+      if (menuSpan) menuSpan.hidden = true;
       root.getElementById("title").textContent = titles[this._fixedSpan];
       this._planButton.textContent = this._fixedSpan === "month" ? "Plan the month" : this._fixedSpan === "day" ? "Plan today" : "Plan the week";
       this._span = this._fixedSpan;
@@ -473,14 +488,8 @@ class SteadyBatchCard extends HTMLElement {
     });
     root.getElementById("load").addEventListener("click", () => root.getElementById("file").click());
     root.getElementById("file").addEventListener("change", (event) => this._loadFile(event.target.files && event.target.files[0]));
-    root.getElementById("span").addEventListener("click", (event) => {
-      const span = event.target && event.target.dataset && event.target.dataset.span;
-      if (!span || this._fixedSpan) return;
-      this._span = span;
-      this._mark(root.getElementById("span"), "span", span);
-      this._planButton.textContent = span === "month" ? "Plan the month" : span === "day" ? "Plan today" : "Plan the week";
-      this._render();
-    });
+    root.getElementById("span").addEventListener("click", (event) => this._setSpan(event));
+    root.getElementById("menu-span").addEventListener("click", (event) => this._setSpan(event));
     root.getElementById("gspan").addEventListener("click", (event) => {
       const span = event.target && event.target.dataset && event.target.dataset.span;
       if (!span) return;
@@ -502,15 +511,30 @@ class SteadyBatchCard extends HTMLElement {
       if (panel) panel.hidden = name !== view;
     });
     this._mark(root.getElementById("views"), "view", view);
-    const titles = { menu: "Today's menu", recipe: "Recipe", shop: "Grocery list", plan: "Plan" };
+    const titles = { menu: "This week", recipe: "Recipe", shop: "Grocery list", plan: "Plan" };
     const title = root.getElementById("title");
-    if (title) title.textContent = titles[view] || "Today's menu";
+    if (title) {
+      title.textContent = view === "menu"
+        ? (this._spanCount() === 1 ? "Today" : this._spanCount() > 7 ? "This month" : "This week")
+        : (titles[view] || "This week");
+    }
   }
 
   _mark(container, key, value) {
+    if (!container) return;
     container.querySelectorAll("button").forEach((button) => {
       button.setAttribute("aria-pressed", button.dataset[key] === value ? "true" : "false");
     });
+  }
+
+  _setSpan(event) {
+    const span = event.target && event.target.dataset && event.target.dataset.span;
+    if (!span || this._fixedSpan) return;
+    this._span = span;
+    this._mark(this.shadowRoot.getElementById("span"), "span", span);
+    this._mark(this.shadowRoot.getElementById("menu-span"), "span", span);
+    if (this._planButton) this._planButton.textContent = span === "month" ? "Plan the month" : span === "day" ? "Plan today" : "Plan the week";
+    this._render();
   }
 
   _dates(count) {
@@ -610,38 +634,40 @@ class SteadyBatchCard extends HTMLElement {
   _render() {
     const dates = this._dates(this._spanCount());
     this._paintHeader(dates);
+    const title = this.shadowRoot && this.shadowRoot.getElementById("title");
+    if (title && this._view === "menu") {
+      title.textContent = this._spanCount() === 1 ? "Today" : this._spanCount() > 7 ? "This month" : "This week";
+    }
     const todayIso = dates[0] && dates[0].iso;
     this._days.innerHTML = dates
       .map(({ iso, label }) => {
         const totals = this._dayTotals(iso);
         const isToday = iso === todayIso;
-        const expanded = isToday || this._openDay === iso || this._spanCount() === 1;
+        const showMeals = this._spanCount() <= 7 || isToday || this._openDay === iso;
         const preview = MEALS.map((meal) => {
           const slot = this._planned[iso + "|" + meal];
           return slot && slot.name ? slot.name : "";
         }).filter(Boolean).join(" · ");
         const meals = MEALS.map((meal) => {
           const slot = this._planned[iso + "|" + meal];
-          if (!expanded) return "";
-          if (!isToday && !(slot && slot.name) && !(this._open && this._open.iso === iso && this._open.meal === meal)) return "";
+          if (!showMeals) return "";
           const recipe = slot ? findRecipe(this._recipes, slot.name) || recipeFromDescription(slot.description, slot.name) : null;
           const count = slot && slot.servings === 2 ? 2 : 1;
           const open = this._open && this._open.iso === iso && this._open.meal === meal;
           const title = slot && slot.name ? `${slot.name}${count === 2 ? " ×2" : ""}` : "Add";
           const kcal = recipe ? `${Math.round(amount(recipe.calories) * count)}` : "";
-          return `<div class="slotwrap">
-            <button class="meal${slot && slot.name ? "" : " empty"}" type="button" data-date="${iso}" data-meal="${meal}" aria-pressed="${open ? "true" : "false"}">
+          return `<button class="meal${slot && slot.name ? "" : " empty"}" type="button" data-date="${iso}" data-meal="${meal}" aria-pressed="${open ? "true" : "false"}">
+              <span class="tick" aria-hidden="true"></span>
               <span class="slotname">${meal}</span>
               <span class="dish">${esc(title)}</span>
               <span class="kcal">${kcal}</span>
-            </button>
-          </div>`;
+            </button>`;
         }).join("");
-        if (!isToday && !preview && !expanded) return "";
-        const head = isToday
-          ? `<div class="daytop"><h3>Today</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : esc(label)}</span></div>`
-          : `<button class="dayhead" type="button" data-day="${iso}" aria-expanded="${expanded ? "true" : "false"}"><strong>${esc(label)}${totals.calories ? ` · ${Math.round(totals.calories)} cal` : ""}</strong><em>${esc(preview || "Nothing planned")}</em></button>`;
-        return `<section class="day${isToday ? " today" : ""}">${head}${expanded ? meals : ""}</section>`;
+        if (!isToday && !preview && this._spanCount() > 7) return "";
+        const head = this._spanCount() > 7 && !isToday
+          ? `<button class="dayhead" type="button" data-day="${iso}" aria-expanded="${showMeals ? "true" : "false"}"><strong>${esc(label)}${totals.calories ? ` · ${Math.round(totals.calories)} cal` : ""}</strong><em>${esc(preview || "Nothing planned")}</em></button>`
+          : `<div class="daytop"><h3>${isToday ? "Today" : esc(label)}</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : ""}</span></div>`;
+        return `<section class="day${isToday ? " today" : ""}">${head}${showMeals ? meals : ""}</section>`;
       })
       .join("");
     this._days.querySelectorAll("button.dayhead").forEach((button) => {
