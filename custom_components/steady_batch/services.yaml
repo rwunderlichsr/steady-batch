@@ -184,6 +184,21 @@ set_meal:
         - "Large Yogurt"
         - "Beef Slices"
         - "Pork Slices"
+        - "Buffalo Chicken and Blue Cheese Casserole"
+        - "Buffalo Chicken and Blue Cheese"
+        - "Chicken and Eggs"
+        - "Steak and Eggs"
+        - "Eggs and Cheddar"
+        - "Beef and Egg Skillet"
+        - "Cheeseburger, No Bun"
+        - "Butter Beef Patties"
+        - "Salmon with Butter"
+        - "Butter Salmon"
+        - "Pork with Butter"
+        - "Pork Chops and Butter"
+        - "Chicken and Blue Cheese"
+        - "Beef and Cheddar"
+        - "Egg and Cheddar"
     servings:
       name: Servings
       selector:
