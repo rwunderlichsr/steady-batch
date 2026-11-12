@@ -1,4 +1,5 @@
 const MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"];
+const PROTEINS = ["Chicken", "Turkey", "Beef", "Pork", "Salmon", "Eggs", "Yogurt", "Cottage cheese", "Tuna", "Shrimp", "White fish", "Beans"];
 
 function esc(value) {
   return String(value).split("\u0026").join("\u0026amp;").split("<").join("\u0026lt;").split('"').join("\u0026quot;");
@@ -32,15 +33,16 @@ function shoppingLines(planned, recipes, dates) {
   return [...counts.entries()].map(([line, count]) => (count > 1 ? `${count} × ${line}` : line));
 }
 
-function planDays(goal, recipes, count, disliked, liked) {
+function planDays(goal, recipes, count, disliked, liked, skipped) {
   const blocked = disliked || new Set();
   const loved = liked || new Set();
+  const out = skipped || new Set();
   const used = new Set();
   const byMeal = Object.fromEntries(MEALS.map((meal) => [meal, recipes.filter((recipe) => recipe.meal === meal)]));
   const days = [];
   for (let salt = 0; salt < count; salt += 1) {
     const choices = (meal) => {
-      const all = (byMeal[meal] || []).filter((recipe) => !blocked.has(recipe.name));
+      const all = (byMeal[meal] || []).filter((recipe) => !blocked.has(recipe.name) && !out.has(String(recipe.key || "").split("|")[1]));
       const fresh = all.filter((recipe) => !used.has(recipe.name));
       const source = fresh.length >= 4 ? fresh : all;
       const start = source.length ? (salt * 5) % source.length : 0;
@@ -146,6 +148,8 @@ class SteadyBatchCard extends HTMLElement {
           <label>Daily calories
             <input id="goal" inputmode="numeric" placeholder="From Hume or MyFitnessPal" />
           </label>
+          <p class="note">Tap a protein to leave it out of the plan. Tap it again to put it back.</p>
+          <div class="row three" id="skip"></div>
           <button id="plan" type="button">Recommended meal plan</button>
           <input id="file" type="file" accept="application/json,.json" />
           <button id="load" type="button">Load plan from the app</button>
@@ -179,6 +183,34 @@ class SteadyBatchCard extends HTMLElement {
     this._query = "";
     this._goal = root.getElementById("goal");
     this._planButton = root.getElementById("plan");
+    this._skip = new Set();
+    try {
+      const saved = JSON.parse(localStorage.getItem("steady-batch-skip") || "[]");
+      if (Array.isArray(saved)) saved.filter((name) => PROTEINS.includes(name)).forEach((name) => this._skip.add(name));
+    } catch (error) {
+      this._skip = new Set();
+    }
+    const skip = root.getElementById("skip");
+    PROTEINS.forEach((name) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.protein = name;
+      button.addEventListener("click", () => {
+        if (this._skip.has(name)) this._skip.delete(name);
+        else this._skip.add(name);
+        localStorage.setItem("steady-batch-skip", JSON.stringify([...this._skip]));
+        this._paintSkip();
+      });
+      skip.appendChild(button);
+    });
+    this._paintSkip = () => {
+      skip.querySelectorAll("button").forEach((button) => {
+        const off = this._skip.has(button.dataset.protein);
+        button.textContent = off ? `No ${button.dataset.protein}` : button.dataset.protein;
+        button.setAttribute("aria-pressed", off ? "true" : "false");
+      });
+    };
+    this._paintSkip();
     root.getElementById("plan").addEventListener("click", () => this._plan());
     root.getElementById("load").addEventListener("click", () => root.getElementById("file").click());
     root.getElementById("file").addEventListener("change", (event) => this._loadFile(event.target.files && event.target.files[0]));
@@ -398,7 +430,7 @@ class SteadyBatchCard extends HTMLElement {
     try {
       const blocked = new Set(Object.entries(this._ratings || {}).filter((entry) => entry[1] === "dislike").map((entry) => entry[0]));
       const loved = new Set(Object.entries(this._ratings || {}).filter((entry) => entry[1] === "like").map((entry) => entry[0]));
-      const days = planDays(goal, await this._ensureRecipes(), dates.length, blocked, loved);
+      const days = planDays(goal, await this._ensureRecipes(), dates.length, blocked, loved, this._skip);
       const meals = [];
       dates.forEach((day, index) => {
         for (const meal of MEALS) {
