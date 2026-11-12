@@ -14,15 +14,19 @@ Repository: https://github.com/rwunderlichsr/steady-batch
 
 The dashboard card is included. No separate resource file.
 
-Add a card:
+Add the meal card:
 
 ```yaml
 type: custom:steady-batch-card
 ```
 
-You get `calendar.steady_batch` and `sensor.steady_batch_today`. The sensor state is today's calories. Attributes include protein, the goal, and each meal.
+Add the grocery list:
 
-The card also builds the week's shopping list. Download it as a text file, or add the items to Home Assistant's Shopping List so they show in the phone app. Enable **Shopping List** under Settings → Devices & services if that button says it is missing.
+```yaml
+type: custom:steady-batch-grocery
+```
+
+The grocery card has **Print** and **Send**. The calendar stays empty until you tap **Recommended meal plan** on the meal card, or send a plan from the app. The grocery list is built from those meals.
 
 ## Install without HACS
 

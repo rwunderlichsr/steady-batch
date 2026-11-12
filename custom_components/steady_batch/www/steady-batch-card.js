@@ -173,24 +173,14 @@ class SteadyBatchCard extends HTMLElement {
           </div>
           <article class="recipe" id="recipe" hidden></article>
           <div id="days"></div>
-          <h2>Shopping list</h2>
-          <div class="row three" id="shop-span">
-            <button type="button" data-shop="day" aria-pressed="false">Day</button>
-            <button type="button" data-shop="week" aria-pressed="true">Week</button>
-            <button type="button" data-shop="month" aria-pressed="false">Month</button>
-          </div>
-          <ul class="shop" id="shop"></ul>
-          <button id="download" type="button">Download shopping list</button>
-          <button id="ha-list" type="button">Add to Home Assistant shopping list</button>
+          <p class="note">The grocery list is a separate card. Add Steady Batch grocery list.</p>
         </div>
       </ha-card>`;
     this._status = root.getElementById("status");
     this._days = root.getElementById("days");
-    this._shop = root.getElementById("shop");
     this._recipe = root.getElementById("recipe");
     this._planned = {};
     this._span = "week";
-    this._shopSpan = "week";
     this._open = null;
     this._ratings = {};
     this._query = "";
@@ -239,15 +229,6 @@ class SteadyBatchCard extends HTMLElement {
       this._planButton.textContent = span === "month" ? "Recommended month" : "Recommended meal plan";
       this._render();
     });
-    root.getElementById("shop-span").addEventListener("click", (event) => {
-      const shop = event.target && event.target.dataset && event.target.dataset.shop;
-      if (!shop) return;
-      this._shopSpan = shop;
-      this._mark(root.getElementById("shop-span"), "shop", shop);
-      this._renderShop();
-    });
-    root.getElementById("download").addEventListener("click", () => this._download());
-    root.getElementById("ha-list").addEventListener("click", () => this._toShoppingList());
     this._render();
   }
 
@@ -272,12 +253,6 @@ class SteadyBatchCard extends HTMLElement {
 
   _spanCount() {
     return this._span === "month" ? 31 : 7;
-  }
-
-  _shopCount() {
-    if (this._shopSpan === "day") return 1;
-    if (this._shopSpan === "month") return 31;
-    return 7;
   }
 
   async _ensureRecipes() {
@@ -360,7 +335,6 @@ class SteadyBatchCard extends HTMLElement {
       });
     });
     this._renderRecipe();
-    this._renderShop();
   }
 
   _renderRecipe() {
@@ -474,47 +448,6 @@ class SteadyBatchCard extends HTMLElement {
     }
   }
 
-  _renderShop() {
-    const dates = this._dates(this._shopCount()).map((day) => day.iso);
-    const lines = shoppingLines(this._planned, this._recipes || [], dates);
-    this._shop.innerHTML = lines.length ? lines.map((line) => `<li>${esc(line)}</li>`).join("") : "<li>No meals in this range.</li>";
-  }
-
-  _shopLines() {
-    return shoppingLines(this._planned, this._recipes || [], this._dates(this._shopCount()).map((day) => day.iso));
-  }
-
-  _download() {
-    const lines = this._shopLines();
-    if (!lines.length) {
-      this._status.textContent = "Plan a meal first. The list comes from those meals.";
-      return;
-    }
-    const file = new Blob([`${lines.join("\n")}\n`], { type: "text/plain" });
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "steady-batch-shopping-list.txt";
-    link.click();
-    URL.revokeObjectURL(url);
-    this._status.textContent = "Shopping list downloaded.";
-  }
-
-  async _toShoppingList() {
-    const lines = this._shopLines();
-    if (!lines.length) {
-      this._status.textContent = "Plan a meal first. The list comes from those meals.";
-      return;
-    }
-    this._status.textContent = "Adding items…";
-    try {
-      for (const name of lines) await this._hass.callService("shopping_list", "add_item", { name });
-      this._status.textContent = `Added ${lines.length} items to the Home Assistant shopping list.`;
-    } catch (error) {
-      this._status.textContent = "Download still works. To send it to your phone, enable the Shopping List integration.";
-    }
-  }
-
   async _rate(name, rating) {
     const recipe = (this._recipes || []).find((item) => item.name === name);
     const id = recipe && recipe.key ? recipe.key : name;
@@ -559,5 +492,171 @@ if (!window.customCards.some((card) => card.type === "steady-batch-card")) {
     type: "steady-batch-card",
     name: "Steady Batch",
     description: "Shows the meal plan sent from the Steady Batch app.",
+  });
+}
+
+class SteadyBatchGroceryCard extends HTMLElement {
+  setConfig(config) {
+    this._config = config || {};
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._built) this._build();
+    if (!this._loaded) {
+      this._loaded = true;
+      this._refresh();
+    }
+  }
+
+  getCardSize() {
+    return 6;
+  }
+
+  _build() {
+    this._built = true;
+    this._span = "week";
+    const root = this.attachShadow({ mode: "open" });
+    root.innerHTML = `
+      <ha-card>
+        <style>
+          .wrap { padding: 16px; }
+          h2 { margin: 0 0 4px; font-size: 1.35rem; }
+          .note, .status { margin: 0 0 12px; color: var(--secondary-text-color); }
+          .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 0 0 12px; }
+          .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+          button { min-height: 44px; border-radius: 10px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+          button[aria-pressed="true"], #print { background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
+          ul { margin: 0 0 12px; padding-left: 1.2rem; }
+          li { margin: 0 0 8px; }
+        </style>
+        <div class="wrap">
+          <h2>Grocery list</h2>
+          <p class="status" id="status"></p>
+          <div class="row" id="span">
+            <button type="button" data-span="day">Today</button>
+            <button type="button" data-span="week" aria-pressed="true">Week</button>
+            <button type="button" data-span="month">Month</button>
+          </div>
+          <ul id="list"></ul>
+          <div class="actions">
+            <button id="print" type="button">Print</button>
+            <button id="send" type="button">Send</button>
+          </div>
+        </div>
+      </ha-card>`;
+    this._status = root.getElementById("status");
+    this._list = root.getElementById("list");
+    root.getElementById("span").addEventListener("click", (event) => {
+      const span = event.target && event.target.dataset && event.target.dataset.span;
+      if (!span) return;
+      this._span = span;
+      root.querySelectorAll("#span button").forEach((button) => {
+        button.setAttribute("aria-pressed", button.dataset.span === span ? "true" : "false");
+      });
+      this._render();
+    });
+    root.getElementById("print").addEventListener("click", () => this._print());
+    root.getElementById("send").addEventListener("click", () => this._send());
+  }
+
+  _count() {
+    if (this._span === "day") return 1;
+    if (this._span === "month") return 31;
+    return 7;
+  }
+
+  _dates() {
+    const dates = [];
+    const now = new Date();
+    for (let i = 0; i < this._count(); i += 1) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      dates.push(day.toLocaleDateString("en-CA"));
+    }
+    return dates;
+  }
+
+  async _refresh() {
+    try {
+      const recipes = await this._hass.callService("steady_batch", "list_recipes", {}, undefined, undefined, true);
+      const recipeBody = recipes?.response || recipes || {};
+      this._recipes = recipeBody.recipes || [];
+      const response = await this._hass.callService(
+        "calendar",
+        "get_events",
+        { duration: { days: 32 } },
+        { entity_id: "calendar.steady_batch" },
+        undefined,
+        true,
+      );
+      const body = response?.response || response || {};
+      const events = body["calendar.steady_batch"]?.events || [];
+      const planned = {};
+      for (const event of events) {
+        const start = String(event.start || "").slice(0, 10);
+        const summary = String(event.summary || "");
+        const meal = MEALS.find((name) => summary.startsWith(name + ":"));
+        if (!meal) continue;
+        const label = summary.slice(meal.length + 2);
+        planned[start + "|" + meal] = { name: label.replace(/ ×2$/, ""), servings: label.endsWith("×2") ? 2 : 1 };
+      }
+      this._planned = planned;
+      this._render();
+    } catch (error) {
+      this._status.textContent = "Add the Steady Batch integration, then reload this card.";
+    }
+  }
+
+  _lines() {
+    return shoppingLines(this._planned || {}, this._recipes || [], this._dates());
+  }
+
+  _render() {
+    const lines = this._lines();
+    this._list.innerHTML = lines.length ? lines.map((line) => `<li>${esc(line)}</li>`).join("") : "";
+    this._status.textContent = lines.length
+      ? `${lines.length} items from the meals on the Steady Batch calendar.`
+      : "Nothing to buy yet. The calendar is empty until you tap Recommended meal plan on the Steady Batch card, or send a plan from the app.";
+  }
+
+  _print() {
+    const lines = this._lines();
+    if (!lines.length) return;
+    const page = window.open("", "_blank", "noopener,width=720,height=900");
+    if (!page) {
+      this._status.textContent = "The browser blocked the print window. Allow pop-ups for Home Assistant, then press Print again.";
+      return;
+    }
+    const items = lines.map((line) => `<li>${esc(line)}</li>`).join("");
+    page.document.write(`<!doctype html><title>Grocery list</title><style>body{font:16px system-ui;margin:32px}h1{font-size:22px}li{margin:0 0 8px}</style><h1>Grocery list</h1><ul>${items}</ul>`);
+    page.document.close();
+    page.focus();
+    page.print();
+  }
+
+  async _send() {
+    const lines = this._lines();
+    if (!lines.length) return;
+    const text = lines.join("\n");
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Grocery list", text });
+        return;
+      } catch (error) {
+        if (error && error.name === "AbortError") return;
+      }
+    }
+    window.location.href = `mailto:?subject=${encodeURIComponent("Grocery list")}&body=${encodeURIComponent(text)}`;
+  }
+}
+
+if (!customElements.get("steady-batch-grocery")) {
+  customElements.define("steady-batch-grocery", SteadyBatchGroceryCard);
+}
+if (!window.customCards.some((card) => card.type === "steady-batch-grocery")) {
+  window.customCards.push({
+    type: "steady-batch-grocery",
+    name: "Steady Batch grocery list",
+    description: "Grocery list for the planned meals, with print and send.",
   });
 }
