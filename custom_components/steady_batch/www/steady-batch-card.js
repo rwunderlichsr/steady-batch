@@ -6,6 +6,53 @@ function esc(value) {
   return String(value).split("\u0026").join("\u0026amp;").split("<").join("\u0026lt;").split('"').join("\u0026quot;");
 }
 
+function cookWay(recipe, method) {
+  const egg = /egg/i.test(`${recipe.name || ""} ${(recipe.ingredients || []).join(" ")}`);
+  const note = egg
+    ? "Cook ahead. Yes. Fridge 3 days. Reheat one box covered: microwave 60–90 seconds, stir once, or a covered pan on low for 3–4 minutes. Stop when it is hot or the eggs turn rubbery."
+    : "Cook ahead. Yes. Fridge 3 days. Reheat one portion covered until hot, about a minute. Add a splash of water if it looks dry.";
+  if (method === "oven" && egg) {
+    return {
+      time: "375°F for 30–35 minutes",
+      steps: [
+        "Heat the oven to 375°F. Oil a baking dish.",
+        "Brown raw ground meat with the spices, about 5 minutes. Drain the fat.",
+        "Stir in the eggs and vegetables. Spread in the dish.",
+        "Bake 30–35 minutes, until the center is set and poultry is 165°F.",
+        "Rest 10 minutes, then cut it into portions.",
+      ],
+      note,
+    };
+  }
+  if (method === "stove" && egg) {
+    return {
+      time: "About 15 minutes in a skillet",
+      steps: [
+        "Brown the meat with the spices, 5–6 minutes. Drain extra fat.",
+        "Add the vegetables for 2 minutes.",
+        "Pour in the eggs. Cook over medium-low, stirring, 6–8 minutes, until just set.",
+        "Take it off while it still looks a little soft. Box what you will not eat.",
+      ],
+      note,
+    };
+  }
+  if (method === "oven") {
+    return {
+      time: "325°F, covered, 35–60 minutes",
+      steps: ["Heat the oven to 325°F.", "Put the meat and vegetables in a covered dish with the oil and spices.", "Bake until cooked through, about 35 minutes for fish and 45–60 for a breast or tenderloin.", "Rest, then portion it."],
+      note,
+    };
+  }
+  if (method === "stove") {
+    return {
+      time: "About 15–25 minutes on the stove",
+      steps: ["Season the meat with the spices.", "Sear it in a little oil, then add the vegetables.", "Cover and cook on low until it is done.", "Rest, then portion what you will not eat now."],
+      note,
+    };
+  }
+  return { time: recipe.time || "", steps: recipe.instructions || [], note };
+}
+
 function prepLabel(recipe) {
   const plate = /1 plate/i.test(recipe.servings || "") || String(recipe.key || "").includes("|No cook|");
   if (plate) return "Assemble when you eat it. Not a cook-ahead meal.";
@@ -752,6 +799,15 @@ class SteadyBatchCard extends HTMLElement {
       )
       .join("");
     const count = slot && slot.servings === 2 ? 2 : 1;
+    if (recipe && this._cookFor !== recipe.name) {
+      this._cookFor = recipe.name;
+      const key = String(recipe.key || "");
+      this._cookMethod = key.includes("Sous Vide") ? "sousvide" : key.includes("Casserole") ? "oven" : "crockpot";
+    }
+    const way = recipe ? cookWay(recipe, this._cookMethod || "crockpot") : null;
+    const methodButtons = recipe && !String(recipe.key || "").includes("No cook")
+      ? `<div class="seg" id="cook-method">${["crockpot", "oven", "stove"].map((name) => `<button type="button" data-cook="${name}" aria-pressed="${(this._cookMethod || "crockpot") === name ? "true" : "false"}">${name === "crockpot" ? "Crockpot" : name === "oven" ? "Oven" : "Stove"}</button>`).join("")}</div><p class="note">${esc(way.time)}</p>`
+      : "";
     const rating = recipe ? ratingOf(this._ratings, recipe) : "";
     const body = recipe
       ? `<div class="macros">
@@ -763,8 +819,9 @@ class SteadyBatchCard extends HTMLElement {
         <h4>Ingredients</h4>
         <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(count === 2 ? item : item)}</span></label></li>`).join("") || "<li>No ingredients on this one.</li>"}</ul>
         <h4>Make it</h4>
-        <ol>${(recipe.instructions || []).map((step) => `<li>${esc(step)}</li>`).join("") || "<li>No steps on this one.</li>"}</ol>
-        <p class="note">${esc(prepLabel(recipe))}</p>
+        ${methodButtons}
+        <ol>${(way ? way.steps : []).map((step) => `<li>${esc(step)}</li>`).join("") || "<li>No steps on this one.</li>"}</ol>
+        <p class="note">${esc(way ? way.note : "")}</p>
         ${recipe.doneWhen ? `<p class="note">${esc(recipe.doneWhen)}</p>` : ""}
         <div class="rate">
           <button type="button" data-rate="like" aria-pressed="${rating === "like" ? "true" : "false"}">Like</button>
@@ -785,6 +842,12 @@ class SteadyBatchCard extends HTMLElement {
       </details>`;
     const back = sheet.querySelector("#back");
     if (back) back.addEventListener("click", () => this._show(this._lockedView || "menu"));
+    sheet.querySelectorAll("[data-cook]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._cookMethod = button.dataset.cook;
+        this._fillSheet();
+      });
+    });
     const opened = { iso: this._open.iso, meal: this._open.meal };
     const swap = sheet.querySelector("details");
     if (swap) swap.open = Boolean(this._swapOpen);

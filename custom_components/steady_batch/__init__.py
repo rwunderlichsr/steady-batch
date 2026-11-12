@@ -81,7 +81,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
         await hass.http.async_register_static_paths(paths)
     except RuntimeError:
         pass
-    url = "/steady_batch/steady-batch-card.js?v=25"
+    url = "/steady_batch/steady-batch-card.js?v=26"
     add_extra_js_url(hass, url)
     try:
         from homeassistant.components.panel_custom import async_register_panel
