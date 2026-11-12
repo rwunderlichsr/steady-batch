@@ -258,7 +258,10 @@ const CARD_CSS = `
   .mode-day button.meal { min-height: 62px; }
   .mode-day .dish { font-size: 1.15rem; font-weight: 700; }
   .mode-day .kcal { font-size: 0.9rem; }
-  .mode-day .day { padding: 16px 14px 8px; }
+  .coming-label { margin: 14px 6px 0; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .day.upcoming { padding: 8px 8px 4px; }
+  .day.upcoming button.meal { min-height: 36px; }
+  .day.upcoming .dish { font-size: 0.88rem; }
   button.back { display: inline-flex; align-items: center; min-height: 32px; margin: 0 0 8px; padding: 0; border: 0; background: transparent; color: var(--primary-color); font: inherit; font-weight: 750; }
   button.meal[aria-pressed="true"], button.meal:hover { background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
   .slotname { font-size: 0.66rem; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
@@ -421,11 +424,10 @@ class SteadyBatchCard extends HTMLElement {
     const titles = { day: "Today", week: "This week", month: "This month" };
     if (this._fixedSpan) {
       root.getElementById("span").hidden = true;
-      const menuSpan = root.getElementById("menu-span");
-      if (menuSpan) menuSpan.hidden = true;
-      root.getElementById("title").textContent = titles[this._fixedSpan];
+      root.getElementById("title").textContent = this._name || titles[this._fixedSpan];
       this._planButton.textContent = this._fixedSpan === "month" ? "Plan the month" : this._fixedSpan === "day" ? "Plan today" : "Plan the week";
       this._span = this._fixedSpan;
+      this._mark(root.getElementById("menu-span"), "span", this._span === "month" ? "week" : this._span);
     }
     try {
       const saved = JSON.parse(localStorage.getItem("steady-batch-skip") || "[]");
@@ -546,7 +548,8 @@ class SteadyBatchCard extends HTMLElement {
 
   _setSpan(event) {
     const span = event.target && event.target.dataset && event.target.dataset.span;
-    if (!span || this._fixedSpan) return;
+    if (!span) return;
+    this._fixedSpan = span === "day" || span === "week" || span === "month" ? null : this._fixedSpan;
     this._span = span;
     this._mark(this.shadowRoot.getElementById("span"), "span", span);
     this._mark(this.shadowRoot.getElementById("menu-span"), "span", span);
@@ -651,42 +654,48 @@ class SteadyBatchCard extends HTMLElement {
   _render() {
     const dates = this._dates(this._spanCount());
     this._paintHeader(dates);
+    const wrap = this.shadowRoot && this.shadowRoot.querySelector(".wrap");
+    if (wrap) wrap.classList.toggle("mode-day", this._spanCount() === 1);
     const title = this.shadowRoot && this.shadowRoot.getElementById("title");
     if (title && this._view === "menu") {
       title.textContent = this._name || (this._spanCount() === 1 ? "Today" : this._spanCount() > 7 ? "This month" : "This week");
     }
     const todayIso = dates[0] && dates[0].iso;
-    this._days.innerHTML = dates
-      .map(({ iso, label }) => {
-        const totals = this._dayTotals(iso);
-        const isToday = iso === todayIso;
-        const showMeals = this._spanCount() <= 7 || isToday || this._openDay === iso;
-        const preview = MEALS.map((meal) => {
-          const slot = this._planned[iso + "|" + meal];
-          return slot && slot.name ? slot.name : "";
-        }).filter(Boolean).join(" · ");
-        const meals = MEALS.map((meal) => {
-          const slot = this._planned[iso + "|" + meal];
-          if (!showMeals) return "";
-          const recipe = slot ? findRecipe(this._recipes, slot.name) || recipeFromDescription(slot.description, slot.name) : null;
-          const count = slot && slot.servings === 2 ? 2 : 1;
-          const open = this._open && this._open.iso === iso && this._open.meal === meal;
-          const title = slot && slot.name ? `${slot.name}${count === 2 ? " ×2" : ""}` : "Add";
-          const kcal = recipe ? `${Math.round(amount(recipe.calories) * count)}` : "";
-          return `<button class="meal${slot && slot.name ? "" : " empty"}" type="button" data-date="${iso}" data-meal="${meal}" aria-pressed="${open ? "true" : "false"}">
-              <span class="tick" aria-hidden="true"></span>
-              <span class="slotname">${meal}</span>
-              <span class="dish">${esc(title)}</span>
-              <span class="kcal">${kcal}</span>
-            </button>`;
-        }).join("");
-        if (!isToday && !preview && this._spanCount() > 7) return "";
-        const head = this._spanCount() > 7 && !isToday
-          ? `<button class="dayhead" type="button" data-day="${iso}" aria-expanded="${showMeals ? "true" : "false"}"><strong>${esc(label)}${totals.calories ? ` · ${Math.round(totals.calories)} cal` : ""}</strong><em>${esc(preview || "Nothing planned")}</em></button>`
-          : `<div class="daytop"><h3>${isToday ? "Today" : esc(label)}</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : ""}</span></div>`;
-        return `<section class="day${isToday ? " today" : ""}">${head}${showMeals ? meals : ""}</section>`;
-      })
-      .join("");
+    const dayBlock = (iso, label, upcoming) => {
+      const totals = this._dayTotals(iso);
+      const isToday = iso === todayIso && !upcoming;
+      const showMeals = this._spanCount() <= 7 || isToday || this._openDay === iso || upcoming;
+      const preview = MEALS.map((meal) => {
+        const slot = this._planned[iso + "|" + meal];
+        return slot && slot.name ? slot.name : "";
+      }).filter(Boolean).join(" · ");
+      const meals = MEALS.map((meal) => {
+        const slot = this._planned[iso + "|" + meal];
+        if (!showMeals) return "";
+        const recipe = slot ? findRecipe(this._recipes, slot.name) || recipeFromDescription(slot.description, slot.name) : null;
+        const count = slot && slot.servings === 2 ? 2 : 1;
+        const open = this._open && this._open.iso === iso && this._open.meal === meal;
+        const title = slot && slot.name ? `${slot.name}${count === 2 ? " ×2" : ""}` : "Add";
+        const kcal = recipe ? `${Math.round(amount(recipe.calories) * count)}` : "";
+        return `<button class="meal${slot && slot.name ? "" : " empty"}" type="button" data-date="${iso}" data-meal="${meal}" aria-pressed="${open ? "true" : "false"}">
+            <span class="tick" aria-hidden="true"></span>
+            <span class="slotname">${meal}</span>
+            <span class="dish">${esc(title)}</span>
+            <span class="kcal">${kcal}</span>
+          </button>`;
+      }).join("");
+      if (!isToday && !preview && this._spanCount() > 7 && !upcoming) return "";
+      const head = this._spanCount() > 7 && !isToday && !upcoming
+        ? `<button class="dayhead" type="button" data-day="${iso}" aria-expanded="${showMeals ? "true" : "false"}"><strong>${esc(label)}${totals.calories ? ` · ${Math.round(totals.calories)} cal` : ""}</strong><em>${esc(preview || "Nothing planned")}</em></button>`
+        : `<div class="daytop"><h3>${isToday ? "Today" : esc(label)}</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : ""}</span></div>`;
+      return `<section class="day${isToday ? " today" : ""}${upcoming ? " upcoming" : ""}">${head}${showMeals ? meals : ""}</section>`;
+    };
+    let html = dates.map(({ iso, label }) => dayBlock(iso, label, false)).join("");
+    if (this._spanCount() === 1) {
+      html += `<p class="coming-label">Coming up this week</p>`;
+      html += this._dates(7).slice(1).map(({ iso, label }) => dayBlock(iso, label, true)).join("");
+    }
+    this._days.innerHTML = html;
     this._days.querySelectorAll("button.dayhead").forEach((button) => {
       button.addEventListener("click", () => {
         this._openDay = this._openDay === button.dataset.day ? null : button.dataset.day;
