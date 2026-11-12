@@ -108,34 +108,84 @@ class SteadyBatchCard extends HTMLElement {
           #plan { background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
           ul.shop { margin: 8px 0 0; padding-left: 18px; }
           li { margin: 0 0 6px; }
-          .day { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--secondary-background-color); }
-          .day h3 { margin: 0 0 8px; font-size: 0.95rem; }
+          .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 12px; }
+          .tabs button { font-weight: 600; }
+          .tabs button[aria-selected="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff); }
+          button.meal { text-align: left; padding: 10px 12px; }
+          button.meal small { display: block; color: var(--secondary-text-color); font-size: 0.8rem; }
+          button.meal[aria-pressed="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff); }
+          button.meal[aria-pressed="true"] small { color: inherit; }
+          .recipe { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--secondary-background-color); }
+          .recipe h3 { margin: 12px 0 6px; font-size: 1rem; }
+          .recipe ol, .recipe ul { margin: 0; padding-left: 1.2rem; }
+          .recipe li { margin: 0 0 8px; }
+          label.check { display: flex; align-items: flex-start; gap: 8px; font-size: 1rem; }
+          label.check input { width: 1.1rem; min-height: 1.1rem; margin-top: 0.2rem; }
+          .days { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 10px; }
+          .days button { width: auto; min-height: 36px; padding: 6px 10px; font-size: 0.75rem; white-space: nowrap; }
         </style>
         <div class="wrap">
           <h2>Steady Batch</h2>
-          <p class="note">The calorie number from Hume or MyFitnessPal. The week is planned onto this Home Assistant calendar.</p>
-          <label>Daily calories
-            <input id="goal" inputmode="numeric" placeholder="1600" />
-          </label>
-          <button id="plan" type="button">Plan this week</button>
-          <p class="status" id="status"></p>
-          <div id="days"></div>
-          <h2>Shopping list</h2>
-          <p class="note">Built from the planned meals. Download it, or send it to the Home Assistant shopping list on your phone.</p>
-          <ul class="shop" id="shop"></ul>
-          <button id="download" class="secondary" type="button">Download shopping list</button>
-          <button id="ha-list" class="secondary" type="button">Add to Home Assistant shopping list</button>
+          <div class="tabs" id="tabs">
+            <button id="tab-pick" type="button" aria-selected="true">Phone</button>
+            <button id="tab-cook" type="button" aria-selected="false">Recipes</button>
+          </div>
+          <div id="pick">
+            <p class="note">Pick on your phone. The week is saved on this Home Assistant calendar.</p>
+            <label>Daily calories
+              <input id="goal" inputmode="numeric" placeholder="1600" />
+            </label>
+            <button id="plan" type="button">Plan this week</button>
+            <p class="status" id="status"></p>
+            <div id="days"></div>
+            <h2>Shopping list</h2>
+            <p class="note">Built from the meals you picked.</p>
+            <ul class="shop" id="shop"></ul>
+            <button id="download" class="secondary" type="button">Download shopping list</button>
+            <button id="ha-list" class="secondary" type="button">Add to Home Assistant shopping list</button>
+          </div>
+          <div id="cook" hidden>
+            <p class="note">The meals you picked. Open one and cook from it.</p>
+            <p class="status" id="cook-status"></p>
+            <div id="cook-days"></div>
+            <div id="cook-list"></div>
+            <article class="recipe" id="recipe" hidden></article>
+          </div>
         </div>
       </ha-card>`;
     this._days = root.getElementById("days");
     this._status = root.getElementById("status");
     this._goal = root.getElementById("goal");
     this._shop = root.getElementById("shop");
+    this._pick = root.getElementById("pick");
+    this._cook = root.getElementById("cook");
+    this._cookDays = root.getElementById("cook-days");
+    this._cookList = root.getElementById("cook-list");
+    this._recipe = root.getElementById("recipe");
+    this._cookStatus = root.getElementById("cook-status");
     this._planned = {};
+    this._cookDay = null;
+    this._openMeal = "Dinner";
     root.getElementById("plan").addEventListener("click", () => this._plan());
     root.getElementById("download").addEventListener("click", () => this._download());
     root.getElementById("ha-list").addEventListener("click", () => this._toShoppingList());
+    root.getElementById("tab-pick").addEventListener("click", () => this._show("pick"));
+    root.getElementById("tab-cook").addEventListener("click", () => this._show("cook"));
+    const view = this._config && this._config.view;
+    if (view === "recipes" || view === "pick") {
+      root.getElementById("tabs").hidden = true;
+      this._show(view === "recipes" ? "cook" : "pick");
+    }
     this._renderDays({});
+  }
+
+  _show(which) {
+    const pick = which !== "cook";
+    this._pick.hidden = !pick;
+    this._cook.hidden = pick;
+    this.shadowRoot.getElementById("tab-pick").setAttribute("aria-selected", pick ? "true" : "false");
+    this.shadowRoot.getElementById("tab-cook").setAttribute("aria-selected", pick ? "false" : "true");
+    if (!pick) this._renderCook();
   }
 
   _dates() {
@@ -177,6 +227,52 @@ class SteadyBatchCard extends HTMLElement {
     this._days.querySelectorAll("select").forEach((select) => {
       select.addEventListener("change", () => this._save(select));
     });
+    if (this._cook && !this._cook.hidden) this._renderCook();
+  }
+
+  _renderCook() {
+    if (!this._cookList) return;
+    const dates = this._dates();
+    if (!this._cookDay) this._cookDay = dates[0].iso;
+    this._cookDays.innerHTML = `<div class="days">${dates
+      .map(({ iso, label }) => `<button type="button" data-day="${iso}" aria-selected="${iso === this._cookDay ? "true" : "false"}">${esc(label)}</button>`)
+      .join("")}</div>`;
+    this._cookDays.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._cookDay = button.dataset.day;
+        this._renderCook();
+      });
+    });
+    this._cookList.innerHTML = MEALS.map((meal) => {
+      const slot = this._planned[this._cookDay + "|" + meal];
+      const name = slot && slot.name ? slot.name : "Not picked yet";
+      return `<button class="meal" type="button" data-meal="${meal}" aria-pressed="${meal === this._openMeal ? "true" : "false"}">${meal}<small>${esc(name)}</small></button>`;
+    }).join("");
+    this._cookList.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._openMeal = button.dataset.meal;
+        this._renderCook();
+      });
+    });
+    const slot = this._planned[this._cookDay + "|" + this._openMeal];
+    const recipe = slot && this._recipes ? this._recipes.find((item) => item.name === slot.name) : null;
+    if (!recipe) {
+      this._recipe.hidden = true;
+      this._cookStatus.textContent = "Pick this meal on your phone first.";
+      return;
+    }
+    this._cookStatus.textContent = "";
+    this._recipe.hidden = false;
+    const ingredients = (recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(item)}</span></label></li>`).join("");
+    const steps = (recipe.instructions || []).map((step) => `<li>${esc(step)}</li>`).join("");
+    this._recipe.innerHTML = `
+      <h2>${esc(recipe.name)}</h2>
+      <p class="note">${esc(recipe.calories)} cal · ${esc(recipe.protein)} protein · ${esc(recipe.carbs)} carbs · ${esc(recipe.time || "")}</p>
+      <h3>Ingredients</h3>
+      <ul>${ingredients}</ul>
+      <h3>Make it</h3>
+      <ol>${steps}</ol>
+      <p class="note">${esc(recipe.doneWhen || "")}</p>`;
   }
 
   async _ensureRecipes() {
