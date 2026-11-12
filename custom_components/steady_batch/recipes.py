@@ -1,16 +1,19 @@
-"""Recipe lookup loaded from recipes.json beside this file."""
+"""Recipe lookup loaded from recipes/part-*.json beside this file."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-_PATH = Path(__file__).with_name("recipes.json")
+_DIR = Path(__file__).with_name("recipes")
 
 
 def load_recipes() -> list[dict]:
     """Return the bundled recipes."""
-    return json.loads(_PATH.read_text(encoding="utf-8"))
+    recipes: list[dict] = []
+    for path in sorted(_DIR.glob("part-*.json")):
+        recipes.extend(json.loads(path.read_text(encoding="utf-8")))
+    return recipes
 
 
 def recipe_by_name(name: str) -> dict | None:

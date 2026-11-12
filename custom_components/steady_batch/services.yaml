@@ -1,0 +1,224 @@
+set_meal:
+  name: Set meal
+  description: Put a Steady Batch meal on a day.
+  fields:
+    date:
+      name: Date
+      required: true
+      selector:
+        date:
+    meal:
+      name: Meal
+      required: true
+      selector:
+        select:
+          options:
+            - Breakfast
+            - Lunch
+            - Dinner
+            - Snack
+    recipe:
+      name: Recipe
+      required: true
+      selector:
+        select:
+          options:
+        - "Chicken & Spinach Breakfast Pot"
+        - "Herb Chicken with Soft Eggs"
+        - "Lemon Herb Chicken with Broccoli"
+        - "Chicken Salad, Yogurt & Dill"
+        - "Garlic Chicken & Zucchini"
+        - "Lemon Thyme Chicken Breast"
+        - "Turkey Pepper Breakfast Bake"
+        - "Turkey Patties & Jammy Eggs"
+        - "Turkey & Cabbage Pot"
+        - "Lemon Herb Turkey Meatballs"
+        - "No-Bean Turkey Chili"
+        - "Paprika Turkey Cutlets"
+        - "Beef & Mushroom Egg Hash"
+        - "Steak Bites & Eggs"
+        - "Pepper Beef, No Salt"
+        - "Sirloin over Herb Salad"
+        - "Round Roast & Cauliflower"
+        - "Rosemary Garlic Sirloin"
+        - "Pork & Greens Breakfast Bake"
+        - "Tenderloin Strips & Eggs"
+        - "Pork Tenderloin & Cabbage"
+        - "Lemon Fennel Pork"
+        - "Rosemary Garlic Tenderloin"
+        - "Pepper Thyme Tenderloin"
+        - "Salmon & Egg Breakfast Cups"
+        - "Dill Salmon & Soft Eggs"
+        - "Lemon Dill Salmon"
+        - "Herb Salmon Salad Bowls"
+        - "Tomato Herb Salmon"
+        - "Lemon Pepper Salmon"
+        - "High-Protein Veggie Egg Casserole"
+        - "Soft Eggs with Herbed Yogurt"
+        - "High-Protein Pepper Egg Loaf"
+        - "Jammy Eggs on a Yogurt Salad"
+        - "High-Protein Mushroom Egg Bake"
+        - "Eggs, Yogurt, and Garlicky Greens"
+        - "Berry Yogurt Bowl"
+        - "Yogurt with Kiwi"
+        - "Cucumber Yogurt Bowl"
+        - "Tomato Yogurt Plate"
+        - "Yogurt Pepper Bowl"
+        - "Raspberry Yogurt"
+        - "Cottage Cheese and Berries"
+        - "Cottage Cheese and Apple"
+        - "Cottage Cheese, Cucumber, and Dill"
+        - "Cottage Cheese and Tomato"
+        - "Cottage Cheese and Peppers"
+        - "Cottage Cheese Salsa Bowl"
+        - "Boiled Eggs, Yogurt, and Berries"
+        - "Eggs and Cottage Cheese"
+        - "Egg Salad on Cucumber"
+        - "Eggs on Greens"
+        - "Eggs, Yogurt, and Spinach"
+        - "Eggs and Tomatoes"
+        - "Tuna Yogurt Cup"
+        - "Tuna and Cottage Cheese"
+        - "Tuna Celery Salad"
+        - "Tuna and Tomato"
+        - "Tuna, Cucumber, and Avocado"
+        - "Tuna Cabbage Slaw"
+        - "Chicken Yogurt Bowl"
+        - "Chicken and Boiled Eggs"
+        - "Chicken on Greens"
+        - "Chicken Cucumber Plate"
+        - "Chicken and Tomatoes"
+        - "Chicken Pepper Plate"
+        - "Salmon Yogurt Bowl"
+        - "Salmon and Eggs"
+        - "Salmon Cucumber Bowl"
+        - "Salmon on Greens (No cook, greens)"
+        - "Salmon and Tomato"
+        - "Salmon and Avocado"
+        - "Oregano Chicken Egg Bake"
+        - "Lemon Chicken and Eggs"
+        - "Tomato Oregano Chicken"
+        - "Chicken on Lemon Greens"
+        - "Lemon Fennel Chicken"
+        - "Garlic Oregano Chicken"
+        - "Turkey Pepper Egg Bake"
+        - "Turkey and Eggs"
+        - "Turkey, Zucchini, and Tomato"
+        - "Turkey Cucumber Plate"
+        - "Oregano Turkey and Cabbage"
+        - "Paprika Turkey and Peppers"
+        - "Beef and Spinach Eggs"
+        - "Beef Strips and Eggs"
+        - "Beef, Pepper, and Tomato"
+        - "Beef on a Tomato Salad"
+        - "Beef and Cauliflower"
+        - "Rosemary Beef and Zucchini"
+        - "Pork and Greens Egg Bake"
+        - "Lemon Pork and Eggs"
+        - "Pork, Cabbage, and Tomato"
+        - "Pork and Cucumber"
+        - "Fennel Lemon Pork"
+        - "Oregano Pork and Peppers"
+        - "Dill Salmon and Eggs"
+        - "Salmon and Soft Eggs"
+        - "Salmon and Zucchini"
+        - "Salmon on Greens (Sous Vide, greens)"
+        - "Tomato Oregano Salmon"
+        - "Lemon Fennel Salmon"
+        - "Herb Egg and Yogurt Bake"
+        - "Eggs with Dill Yogurt"
+        - "Pepper and Tomato Egg Loaf"
+        - "Eggs on a Tomato Plate"
+        - "Spinach Oregano Egg Bake"
+        - "Eggs, Yogurt, and Cucumber"
+        - "Mint Yogurt Bowl"
+        - "Yogurt and Walnuts"
+        - "Yogurt, Mint, and Cucumber"
+        - "Yogurt with Olive Oil and Tomato"
+        - "Herbed Cottage Cheese"
+        - "Cottage Cheese, Tomato, and Oregano"
+        - "Cottage Cheese and Raw Peppers"
+        - "Eggs, Cucumber, and Yogurt"
+        - "Eggs, Tomato, and Basil"
+        - "Lemon Herb Tuna"
+        - "Tuna, Pepper, and Yogurt"
+        - "Tuna, Tomato, and Olive Oil"
+        - "Chicken, Tomato, and Basil"
+        - "Chicken with Mint Yogurt"
+        - "Lemon Dill Salmon Plate"
+        - "Salmon, Tomato, and Oregano"
+        - "Lemon Shrimp Plate"
+        - "Shrimp and Dill Yogurt"
+        - "Shrimp and Tomatoes"
+        - "Shrimp Cucumber Bowl"
+        - "Lemon White Fish"
+        - "White Fish and Tomato"
+        - "White Fish and Cucumber"
+        - "White Fish and an Egg"
+        - "Turkey and Yogurt"
+        - "Turkey and Tomato"
+        - "Turkey on a Big Salad"
+        - "Beef and a Boiled Egg"
+        - "Beef and Tomatoes"
+        - "Beef and Raw Peppers"
+        - "Pork and an Egg"
+        - "Pork and Cucumber Salad"
+        - "Pork and Tomato"
+        - "Yogurt and Peach"
+        - "Yogurt Herb Plate"
+        - "Shrimp on Greens"
+        - "White Fish and Herb Yogurt"
+        - "Salmon Dill Yogurt"
+        - "Tuna, Cottage Cheese, and Celery"
+        - "Yogurt Cup"
+        - "Yogurt and a Few Berries"
+        - "Cottage Cheese Cup"
+        - "One Boiled Egg and Yogurt"
+        - "Half a Can of Tuna"
+        - "Chicken Slices"
+        - "Turkey Slices"
+        - "A Handful of Shrimp"
+        - "Salmon Pouch"
+        - "Leftover White Fish"
+        - "Two Boiled Eggs"
+        - "Large Yogurt"
+        - "Beef Slices"
+        - "Pork Slices"
+    servings:
+      name: Servings
+      selector:
+        number:
+          min: 1
+          max: 2
+          mode: box
+clear_meal:
+  name: Clear meal
+  description: Remove the meal on that day.
+  fields:
+    date:
+      name: Date
+      required: true
+      selector:
+        date:
+    meal:
+      name: Meal
+      required: true
+      selector:
+        select:
+          options:
+            - Breakfast
+            - Lunch
+            - Dinner
+            - Snack
+set_goal:
+  name: Set calorie goal
+  description: Daily calorie number from Hume or MyFitnessPal.
+  fields:
+    calories:
+      name: Calories
+      required: true
+      selector:
+        number:
+          min: 800
+          max: 4000
+          mode: box

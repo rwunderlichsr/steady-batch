@@ -1,0 +1,169 @@
+"""Steady Batch meal planner for Home Assistant."""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from pathlib import Path
+
+import voluptuous as vol
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+from .const import DOMAIN, MEALS, SIGNAL, SLOT_CLOCK
+from .recipes import describe, load_recipes, recipe_by_name
+from .store import MealStore
+
+PLATFORMS = [Platform.CALENDAR, Platform.SENSOR]
+CARD_KEY = f"{DOMAIN}_card"
+
+
+def _local(day: date, hour: int, minute: int) -> datetime:
+    from homeassistant.util import dt as dt_util
+
+    tz = dt_util.now().tzinfo
+    return datetime(day.year, day.month, day.day, hour, minute, tzinfo=tz)
+
+
+def _as_date(value) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value)[:10])
+
+
+def slot_uid(day: date, meal: str) -> str:
+    return f"steady-{day.isoformat()}-{meal.lower()}"
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    store = MealStore(hass)
+    await store.async_load()
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
+    await _async_register_card(hass)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _async_register_services(hass)
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    unload = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+    return unload
+
+
+async def _async_register_card(hass: HomeAssistant) -> None:
+    if hass.data.get(CARD_KEY):
+        return
+    path = Path(__file__).parent / "www" / "steady-batch-card.js"
+    if not path.is_file():
+        return
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig("/steady_batch/steady-batch-card.js", str(path), False)]
+    )
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=3")
+    hass.data[CARD_KEY] = True
+
+
+def _first_store(hass: HomeAssistant) -> MealStore | None:
+    stores = hass.data.get(DOMAIN) or {}
+    return next(iter(stores.values()), None)
+
+
+def _async_register_services(hass: HomeAssistant) -> None:
+    if hass.services.has_service(DOMAIN, "set_meal"):
+        return
+
+    async def set_meal(call: ServiceCall) -> None:
+        store = _first_store(hass)
+        if store is None:
+            return
+        recipe = recipe_by_name(call.data["recipe"])
+        if recipe is None:
+            return
+        day = _as_date(call.data["date"])
+        meal = call.data["meal"]
+        servings = 2 if int(call.data.get("servings") or 1) == 2 else 1
+        (start_h, start_m), (end_h, end_m) = SLOT_CLOCK[meal]
+        name = recipe["name"] + (" ×2" if servings == 2 else "")
+        store.upsert(
+            {
+                "uid": slot_uid(day, meal),
+                "summary": f"{meal}: {name}",
+                "description": describe(recipe, servings),
+                "start": _local(day, start_h, start_m).isoformat(),
+                "end": _local(day, end_h, end_m).isoformat(),
+                "recipe_key": recipe["key"],
+                "servings": servings,
+                "calories": _amount(recipe["calories"]) * servings,
+                "protein": _amount(recipe["protein"]) * servings,
+            }
+        )
+        await store.async_save()
+        async_dispatcher_send(hass, SIGNAL)
+
+    async def clear_meal(call: ServiceCall) -> None:
+        store = _first_store(hass)
+        if store is None:
+            return
+        store.remove(slot_uid(_as_date(call.data["date"]), call.data["meal"]))
+        await store.async_save()
+        async_dispatcher_send(hass, SIGNAL)
+
+    async def set_goal(call: ServiceCall) -> None:
+        store = _first_store(hass)
+        if store is None:
+            return
+        store.goal = int(call.data["calories"])
+        await store.async_save()
+        async_dispatcher_send(hass, SIGNAL)
+
+    async def list_recipes(call: ServiceCall) -> dict:
+        return {"recipes": load_recipes()}
+
+    hass.services.async_register(
+        DOMAIN,
+        "set_meal",
+        set_meal,
+        schema=vol.Schema(
+            {
+                vol.Required("date"): vol.Any(date, datetime, str),
+                vol.Required("meal"): vol.In(MEALS),
+                vol.Required("recipe"): str,
+                vol.Optional("servings", default=1): vol.All(vol.Coerce(int), vol.In([1, 2])),
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "clear_meal",
+        clear_meal,
+        schema=vol.Schema(
+            {
+                vol.Required("date"): vol.Any(date, datetime, str),
+                vol.Required("meal"): vol.In(MEALS),
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "set_goal",
+        set_goal,
+        schema=vol.Schema({vol.Required("calories"): vol.All(vol.Coerce(int), vol.Range(min=800, max=4000))}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "list_recipes",
+        list_recipes,
+        supports_response=SupportsResponse.ONLY,
+    )
+
+
+def _amount(value) -> int:
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    return int(digits or 0)
