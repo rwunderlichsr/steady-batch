@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Steady Batch",
-        "description": "Adds a meal calendar. High protein, low calorie, low carb, no added salt. Plan the week from the Steady Batch dashboard card, or from Developer tools → Actions."
+        "description": "Adds the Meals page to the sidebar. Menu, recipe, grocery list, and plan live there. No dashboard card required."
       }
     },
     "abort": {

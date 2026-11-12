@@ -1046,3 +1046,26 @@ if (!window.customCards.some((card) => card.type === "steady-batch-grocery")) {
     description: "Grocery list for the planned meals, with print and send.",
   });
 }
+
+class SteadyBatchPanel extends HTMLElement {
+  setProperties(props) {
+    if (props && props.hass) this.hass = props.hass;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._card) {
+      this._card = document.createElement("steady-batch-card");
+      this._card.setConfig({});
+      this._card.style.display = "block";
+      this._card.style.maxWidth = "760px";
+      this._card.style.margin = "12px auto 32px";
+      this.appendChild(this._card);
+    }
+    this._card.hass = hass;
+  }
+}
+
+if (!customElements.get("steady-batch-panel")) {
+  customElements.define("steady-batch-panel", SteadyBatchPanel);
+}

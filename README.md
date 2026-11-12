@@ -1,6 +1,6 @@
 # Steady Batch
 
-A Home Assistant meal planner with a real menu, the recipe, the grocery list, and the knobs to build the next week.
+After you install it and restart Home Assistant, **Meals** is in the sidebar. That page is the menu, the recipe, the grocery list, and the plan. You do not add a dashboard card.
 
 High protein. Your calorie number from Hume or MyFitnessPal. Slow cooker, sous vide, casserole, no-cook plates, carnivore, and DASH.
 

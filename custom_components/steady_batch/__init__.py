@@ -68,8 +68,27 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     paths = [StaticPathConfig("/steady_batch/steady-batch-card.js", str(card), False)]
     if recipes.is_dir():
         paths.append(StaticPathConfig("/steady_batch/recipes", str(recipes), False))
-    await hass.http.async_register_static_paths(paths)
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=18")
+    try:
+        await hass.http.async_register_static_paths(paths)
+    except RuntimeError:
+        pass
+    url = "/steady_batch/steady-batch-card.js?v=19"
+    add_extra_js_url(hass, url)
+    try:
+        from homeassistant.components.panel_custom import async_register_panel
+
+        await async_register_panel(
+            hass,
+            frontend_url_path="steady-batch",
+            webcomponent_name="steady-batch-panel",
+            sidebar_title="Meals",
+            sidebar_icon="mdi:silverware-fork-knife",
+            js_url=url,
+            module_url=url,
+            require_admin=False,
+        )
+    except ValueError:
+        pass
     hass.data[CARD_KEY] = True
 
 
