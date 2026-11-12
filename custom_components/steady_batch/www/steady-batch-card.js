@@ -218,7 +218,7 @@ const CARD_CSS = `
   .bar { height: 6px; margin-top: 12px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--primary-text-color) 12%, transparent); }
   .bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--primary-color); }
   .bar.over i { background: var(--error-color, #c4473a); }
-  .pad { padding: 0 16px; }
+  .status.pad { padding: 0 16px; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; margin: 0 0 10px; border-radius: 12px; background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
   .seg button { min-height: 34px; border: 0; border-radius: 9px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 0.85rem; font-weight: 650; }
   .seg button[aria-pressed="true"] { background: var(--card-background-color); color: var(--primary-color); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
@@ -230,6 +230,9 @@ const CARD_CSS = `
   #days { display: grid; gap: 10px; padding: 0 12px; }
   .day { margin: 0; padding: 8px; border: 1px solid var(--divider-color); border-radius: 14px; background: color-mix(in srgb, var(--primary-text-color) 3%, var(--card-background-color)); }
   .day.today { border-color: color-mix(in srgb, var(--primary-color) 50%, var(--divider-color)); }
+  button.dayhead { width: 100%; display: block; text-align: left; min-height: 42px; margin: 0; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; }
+  button.dayhead strong { display: block; font-size: 0.95rem; }
+  button.dayhead em { display: block; margin-top: 2px; font-style: normal; font-size: 0.8rem; color: var(--secondary-text-color); }
   .daytop { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 6px 4px; }
   .daytop h3 { margin: 0; font-size: 0.95rem; }
   .tally { font-size: 0.75rem; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
@@ -302,25 +305,12 @@ class SteadyBatchCard extends HTMLElement {
           <div class="head">
             <p class="kicker">Steady Batch</p>
             <div class="headrow">
-              <h2 id="title">This week</h2>
+              <h2 id="title">Today's menu</h2>
               <p class="goalnum"><strong id="today-cal">—</strong><span id="today-meta">calories today</span></p>
             </div>
             <div class="bar" aria-hidden="true"><i id="bar"></i></div>
           </div>
-          <div class="pad">
-            <div class="seg" id="span">
-              <button type="button" data-span="day">Day</button>
-              <button type="button" data-span="week" aria-pressed="true">Week</button>
-              <button type="button" data-span="month">Month</button>
-            </div>
-            <div class="planrow">
-              <label class="field">Calories
-                <input id="goal" inputmode="numeric" placeholder="1600" />
-              </label>
-              <button id="plan" type="button">Plan the week</button>
-            </div>
-            <p class="status" id="status">Loading recipes…</p>
-          </div>
+          <p class="status pad" id="status">Loading your menu…</p>
           <div id="days"></div>
           <section class="shop">
             <h2>Grocery list</h2>
@@ -336,8 +326,20 @@ class SteadyBatchCard extends HTMLElement {
               <button id="send" type="button">Send</button>
             </div>
           </section>
-          <details class="tools">
-            <summary>Leave a protein out</summary>
+          <details class="tools" id="planner">
+            <summary>Change the plan</summary>
+            <div class="seg" id="span">
+              <button type="button" data-span="day">Day</button>
+              <button type="button" data-span="week" aria-pressed="true">Week</button>
+              <button type="button" data-span="month">Month</button>
+            </div>
+            <div class="planrow">
+              <label class="field">Calories
+                <input id="goal" inputmode="numeric" placeholder="1600" />
+              </label>
+              <button id="plan" type="button">Plan the week</button>
+            </div>
+            <p class="note">Tap a protein to leave it off the next plan.</p>
             <div class="chips" id="skip"></div>
             <div class="links">
               <button id="refresh" type="button">Refresh</button>
@@ -412,7 +414,6 @@ class SteadyBatchCard extends HTMLElement {
       if (!span || this._fixedSpan) return;
       this._span = span;
       this._mark(root.getElementById("span"), "span", span);
-      root.getElementById("title").textContent = titles[span];
       this._planButton.textContent = span === "month" ? "Plan the month" : span === "day" ? "Plan today" : "Plan the week";
       this._render();
     });
@@ -493,20 +494,15 @@ class SteadyBatchCard extends HTMLElement {
       absorbDescriptions(planned, this._recipes);
       const sensor = this._hass.states["sensor.steady_batch_today"];
       if (sensor && sensor.attributes && sensor.attributes.goal && !this._goal.value) this._goal.value = sensor.attributes.goal;
-      if (!this._didAuto) {
-        this._didAuto = true;
-        const today = this._dates(1)[0].iso;
-        for (const meal of MEALS) {
-          if (planned[today + "|" + meal]) {
-            this._open = { iso: today, meal };
-            break;
-          }
-        }
+      const planner = this.shadowRoot && this.shadowRoot.getElementById("planner");
+      if (planner && !this._plannerSet) {
+        this._plannerSet = true;
+        planner.open = !Object.keys(planned).length;
       }
       this._render();
-      if (!this._recipes.length) this._status.textContent = "Recipes did not load. In HACS, update Steady Batch, then restart Home Assistant.";
-      else if (!Object.keys(planned).length) this._status.textContent = `${this._recipes.length} recipes ready. Tap Plan the week.`;
-      else this._status.textContent = `${this._recipes.length} recipes. Tap a meal to open it.`;
+      const count = Object.keys(planned).length;
+      if (!count) this._status.textContent = this._recipes.length ? "No meals on the menu yet. Open Change the plan." : "Menu did not load. Update Steady Batch in HACS, then restart Home Assistant.";
+      else this._status.textContent = "Tap a meal for the recipe. Grocery list is under the menu.";
     } catch (error) {
       this._status.textContent = "Add the Steady Batch integration, then restart Home Assistant.";
     }
@@ -545,8 +541,16 @@ class SteadyBatchCard extends HTMLElement {
     this._days.innerHTML = dates
       .map(({ iso, label }) => {
         const totals = this._dayTotals(iso);
+        const isToday = iso === todayIso;
+        const expanded = isToday || this._openDay === iso || this._spanCount() === 1;
+        const preview = MEALS.map((meal) => {
+          const slot = this._planned[iso + "|" + meal];
+          return slot && slot.name ? slot.name : "";
+        }).filter(Boolean).join(" · ");
         const meals = MEALS.map((meal) => {
           const slot = this._planned[iso + "|" + meal];
+          if (!expanded) return "";
+          if (!isToday && !(slot && slot.name) && !(this._open && this._open.iso === iso && this._open.meal === meal)) return "";
           const recipe = slot ? findRecipe(this._recipes, slot.name) || recipeFromDescription(slot.description, slot.name) : null;
           const count = slot && slot.servings === 2 ? 2 : 1;
           const open = this._open && this._open.iso === iso && this._open.meal === meal;
@@ -561,17 +565,25 @@ class SteadyBatchCard extends HTMLElement {
             ${open ? `<div class="sheet" id="sheet"></div>` : ""}
           </div>`;
         }).join("");
-        return `<section class="day${iso === todayIso ? " today" : ""}">
-          <div class="daytop"><h3>${iso === todayIso ? "Today" : esc(label)}</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : iso === todayIso ? esc(label) : ""}</span></div>
-          ${meals}
-        </section>`;
+        if (!isToday && !preview && !expanded) return "";
+        const head = isToday
+          ? `<div class="daytop"><h3>Today</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : esc(label)}</span></div>`
+          : `<button class="dayhead" type="button" data-day="${iso}" aria-expanded="${expanded ? "true" : "false"}"><strong>${esc(label)}${totals.calories ? ` · ${Math.round(totals.calories)} cal` : ""}</strong><em>${esc(preview || "Nothing planned")}</em></button>`;
+        return `<section class="day${isToday ? " today" : ""}">${head}${expanded ? meals : ""}</section>`;
       })
       .join("");
+    this._days.querySelectorAll("button.dayhead").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._openDay = this._openDay === button.dataset.day ? null : button.dataset.day;
+        this._render();
+      });
+    });
     this._days.querySelectorAll("button.meal").forEach((button) => {
       button.addEventListener("click", () => {
         const same = this._open && this._open.iso === button.dataset.date && this._open.meal === button.dataset.meal;
         this._open = same ? null : { iso: button.dataset.date, meal: button.dataset.meal };
         this._query = "";
+        this._swapOpen = false;
         this._render();
         const sheet = this._days.querySelector("#sheet");
         if (sheet) sheet.scrollIntoView({ block: "nearest" });
@@ -618,15 +630,21 @@ class SteadyBatchCard extends HTMLElement {
     sheet.innerHTML = `
       <h3>${recipe ? esc(recipe.name) : esc(this._open.meal)}</h3>
       ${body}
-      <label class="field">Swap this ${esc(this._open.meal.toLowerCase())}
-        <input id="find" value="${esc(this._query)}" placeholder="Buffalo, eggs, yogurt" />
-      </label>
-      <div class="matches">${matchButtons || "<p class='note'>No match in the recipe list.</p>"}</div>
-      ${slot && slot.name ? `<button type="button" id="clear-slot">Clear this meal</button>` : ""}`;
+      <details>
+        <summary>Change this meal</summary>
+        <label class="field">Find a ${esc(this._open.meal.toLowerCase())}
+          <input id="find" value="${esc(this._query)}" placeholder="Buffalo, eggs, yogurt" />
+        </label>
+        <div class="matches">${matchButtons || "<p class='note'>No match in the recipe list.</p>"}</div>
+        ${slot && slot.name ? `<button type="button" id="clear-slot">Clear this meal</button>` : ""}
+      </details>`;
     const opened = { iso: this._open.iso, meal: this._open.meal };
+    const swap = sheet.querySelector("details");
+    if (swap) swap.open = Boolean(this._swapOpen);
     const find = sheet.querySelector("#find");
     find.addEventListener("input", () => {
       this._query = find.value;
+      this._swapOpen = true;
       this._fillSheet();
       const next = this._days.querySelector("#find");
       if (next) {
