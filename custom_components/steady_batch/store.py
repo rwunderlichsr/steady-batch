@@ -18,6 +18,8 @@ class MealStore:
         self.goal: int | None = None
         self.ratings: dict[str, str] = {}
         self.skip_proteins: list[str] = []
+        self.feed_url = ""
+        self.feed_stamp = ""
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -29,6 +31,8 @@ class MealStore:
         self.ratings = ratings if isinstance(ratings, dict) else {}
         skipped = data.get("skip_proteins", [])
         self.skip_proteins = [str(item) for item in skipped] if isinstance(skipped, list) else []
+        self.feed_url = str(data.get("feed_url") or "")
+        self.feed_stamp = str(data.get("feed_stamp") or "")
 
     async def async_save(self) -> None:
         await self._store.async_save(
@@ -37,6 +41,8 @@ class MealStore:
                 "goal": self.goal,
                 "ratings": self.ratings,
                 "skip_proteins": self.skip_proteins,
+                "feed_url": self.feed_url,
+                "feed_stamp": self.feed_stamp,
             }
         )
 

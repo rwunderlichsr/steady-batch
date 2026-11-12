@@ -63,6 +63,8 @@ class TodayMealsSensor(SensorEntity):
         protein = sum(self._number(event, "protein") for event in meals.values() if event)
         goal = self._store.goal
         attributes: dict = {"protein": protein, "goal": goal or "", "updated": self._updated}
+        if self._store.feed_url:
+            attributes["phone_plan"] = self._store.feed_url
         if goal:
             attributes["left"] = goal - self.native_value
         for meal in MEALS:

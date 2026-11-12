@@ -237,7 +237,8 @@ const CARD_CSS = `
   label.field, p.field { display: block; margin: 8px 0 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
   .status.pad { padding: 0 16px; }
   input, select { width: 100%; min-height: 42px; margin-top: 4px; border-radius: 12px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 1rem; padding: 0 10px; }
-  #plan, #print { min-height: 42px; border: 0; border-radius: 12px; background: var(--primary-color); color: var(--text-primary-color, #fff); font: inherit; font-weight: 700; }
+  #plan, #print, #save-feed { min-height: 42px; border: 0; border-radius: 12px; background: var(--primary-color); color: var(--text-primary-color, #fff); font: inherit; font-weight: 700; }
+  #save-feed { width: 100%; margin-top: 8px; }
   .status { min-height: 1.2em; margin: 0 0 8px; color: var(--secondary-text-color); font-size: 0.82rem; }
   #days { display: grid; gap: 10px; padding: 0 12px; }
   .day { margin: 0; padding: 8px; border: 1px solid var(--divider-color); border-radius: 14px; background: color-mix(in srgb, var(--primary-text-color) 3%, var(--card-background-color)); }
@@ -386,7 +387,11 @@ class SteadyBatchCard extends HTMLElement {
           <section id="view-plan" hidden>
             <div class="panel">
               <h2>Build the menu</h2>
-              <p class="note">Calories from Hume or MyFitnessPal. Styles and proteins limit the next plan. Likes are used first. Dislikes are left out.</p>
+              <p class="note">Paste the phone plan link from the meal planner. The dashboard then uses that month.</p>
+              <label class="field">Phone plan link
+                <input id="feed" placeholder="https://mealplan.lawfaregroup.com/api/plan/..." />
+              </label>
+              <button id="save-feed" type="button">Match the phone</button>
               <div class="seg" id="span">
                 <button type="button" data-span="day">Day</button>
                 <button type="button" data-span="week" aria-pressed="true">Week</button>
@@ -414,6 +419,7 @@ class SteadyBatchCard extends HTMLElement {
     this._status = root.getElementById("status");
     this._days = root.getElementById("days");
     this._goal = root.getElementById("goal");
+    this._feed = root.getElementById("feed");
     this._planButton = root.getElementById("plan");
     this._gstatus = root.getElementById("gstatus");
     this._glist = root.getElementById("glist");
@@ -500,6 +506,7 @@ class SteadyBatchCard extends HTMLElement {
       if (view === "recipe") this._fillSheet();
     });
     root.getElementById("plan").addEventListener("click", () => this._plan());
+    root.getElementById("save-feed").addEventListener("click", () => this._saveFeed());
     root.getElementById("refresh").addEventListener("click", () => {
       this._recipes = [];
       this._status.textContent = "Refreshing…";
@@ -625,6 +632,7 @@ class SteadyBatchCard extends HTMLElement {
       absorbDescriptions(planned, this._recipes);
       const sensor = this._hass.states["sensor.steady_batch_today"];
       if (sensor && sensor.attributes && sensor.attributes.goal && !this._goal.value) this._goal.value = sensor.attributes.goal;
+      if (sensor && sensor.attributes && sensor.attributes.phone_plan && this._feed && !this._feed.value) this._feed.value = sensor.attributes.phone_plan;
       this._render();
       const count = Object.keys(planned).length;
       if (!count) this._status.textContent = this._recipes.length ? `${this._recipes.length} meals ready. Open Plan to build the menu.` : "Meals did not load. Update Steady Batch, then restart Home Assistant.";
@@ -869,6 +877,19 @@ class SteadyBatchCard extends HTMLElement {
       this._status.textContent = recipe ? "Saved." : "Cleared.";
     } catch (error) {
       this._status.textContent = "Couldn't save that change.";
+    }
+  }
+
+  async _saveFeed() {
+    const url = (this._feed && this._feed.value ? this._feed.value : "").trim();
+    this._status.textContent = "Getting the phone plan…";
+    try {
+      await this._hass.callService("steady_batch", "set_phone_plan", { url });
+      this._loaded = false;
+      this.hass = this._hass;
+      this._status.textContent = url ? "Dashboard is using the phone plan. Open Month." : "Phone link cleared.";
+    } catch (error) {
+      this._status.textContent = "Update Steady Batch to 1.10.0 and restart, then paste the link again.";
     }
   }
 

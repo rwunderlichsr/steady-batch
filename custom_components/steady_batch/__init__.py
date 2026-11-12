@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
+import hashlib
+import json
 
 import voluptuous as vol
 from homeassistant.components.frontend import add_extra_js_url
@@ -11,7 +13,9 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN, MEALS, SIGNAL, SLOT_CLOCK
 from .recipes import describe, load_recipes, recipe_by_name
@@ -47,6 +51,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _async_register_card(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _async_register_services(hass)
+    async def _tick(_now):
+        await _async_pull_phone(hass)
+
+    entry.async_on_unload(async_track_time_interval(hass, _tick, timedelta(minutes=2)))
+    hass.async_create_task(_async_pull_phone(hass))
     return True
 
 
@@ -72,7 +81,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
         await hass.http.async_register_static_paths(paths)
     except RuntimeError:
         pass
-    url = "/steady_batch/steady-batch-card.js?v=24"
+    url = "/steady_batch/steady-batch-card.js?v=25"
     add_extra_js_url(hass, url)
     try:
         from homeassistant.components.panel_custom import async_register_panel
@@ -328,6 +337,53 @@ def _async_register_services(hass: HomeAssistant) -> None:
         ),
         supports_response=SupportsResponse.OPTIONAL,
     )
+
+    async def set_phone_plan(call: ServiceCall) -> None:
+        store = _first_store(hass)
+        if store is None:
+            return
+        store.feed_url = str(call.data.get("url") or "").strip()
+        store.feed_stamp = ""
+        await store.async_save()
+        await _async_pull_phone(hass)
+
+    hass.services.async_register(
+        DOMAIN,
+        "set_phone_plan",
+        set_phone_plan,
+        schema=vol.Schema({vol.Required("url"): str}),
+    )
+
+
+async def _async_pull_phone(hass: HomeAssistant) -> None:
+    store = _first_store(hass)
+    if store is None:
+        return
+    url = store.feed_url
+    if not url.startswith("https://") or "/api/plan/" not in url:
+        return
+    session = async_get_clientsession(hass)
+    try:
+        async with session.get(url, timeout=20) as response:
+            if response.status != 200:
+                return
+            payload = await response.json(content_type=None)
+    except Exception:
+        return
+    meals = payload.get("meals") if isinstance(payload, dict) else None
+    if not isinstance(meals, list) or not meals:
+        return
+    stamp = hashlib.sha256(json.dumps(meals, sort_keys=True, default=str).encode()).hexdigest()
+    if stamp == store.feed_stamp:
+        return
+    await hass.services.async_call(
+        DOMAIN,
+        "import_plan",
+        {"meals": meals, "replace": True},
+        blocking=True,
+    )
+    store.feed_stamp = stamp
+    await store.async_save()
 
 
 def _amount(value) -> int:
