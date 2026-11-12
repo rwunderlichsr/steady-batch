@@ -246,3 +246,13 @@ set_goal:
           min: 800
           max: 4000
           mode: box
+import_plan:
+  name: Import plan
+  description: Load the meals sent from the Steady Batch app.
+  fields:
+    meals:
+      name: Meals
+      required: true
+      selector:
+        object:
+

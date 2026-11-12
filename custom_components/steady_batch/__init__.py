@@ -66,7 +66,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig("/steady_batch/steady-batch-card.js", str(path), False)]
     )
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=3")
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=4")
     hass.data[CARD_KEY] = True
 
 
@@ -126,6 +126,38 @@ def _async_register_services(hass: HomeAssistant) -> None:
     async def list_recipes(call: ServiceCall) -> dict:
         return {"recipes": load_recipes()}
 
+    async def import_plan(call: ServiceCall) -> dict:
+        store = _first_store(hass)
+        if store is None:
+            return {"saved": 0}
+        saved = 0
+        for item in call.data["meals"]:
+            recipe = recipe_by_name(item["recipe"])
+            if recipe is None:
+                continue
+            day = _as_date(item["date"])
+            meal = item["meal"]
+            servings = 2 if int(item.get("servings") or 1) == 2 else 1
+            (start_h, start_m), (end_h, end_m) = SLOT_CLOCK[meal]
+            name = recipe["name"] + (" ×2" if servings == 2 else "")
+            store.upsert(
+                {
+                    "uid": slot_uid(day, meal),
+                    "summary": f"{meal}: {name}",
+                    "description": describe(recipe, servings),
+                    "start": _local(day, start_h, start_m).isoformat(),
+                    "end": _local(day, end_h, end_m).isoformat(),
+                    "recipe_key": recipe["key"],
+                    "servings": servings,
+                    "calories": _amount(recipe["calories"]) * servings,
+                    "protein": _amount(recipe["protein"]) * servings,
+                }
+            )
+            saved += 1
+        await store.async_save()
+        async_dispatcher_send(hass, SIGNAL)
+        return {"saved": saved}
+
     hass.services.async_register(
         DOMAIN,
         "set_meal",
@@ -161,6 +193,26 @@ def _async_register_services(hass: HomeAssistant) -> None:
         "list_recipes",
         list_recipes,
         supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "import_plan",
+        import_plan,
+        schema=vol.Schema(
+            {
+                vol.Required("meals"): [
+                    vol.Schema(
+                        {
+                            vol.Required("date"): str,
+                            vol.Required("meal"): vol.In(MEALS),
+                            vol.Required("recipe"): str,
+                            vol.Optional("servings", default=1): vol.All(vol.Coerce(int), vol.In([1, 2])),
+                        }
+                    )
+                ]
+            }
+        ),
+        supports_response=SupportsResponse.OPTIONAL,
     )
 
 
