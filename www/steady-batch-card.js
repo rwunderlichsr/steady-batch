@@ -82,7 +82,6 @@ function planDays(goal, recipes, count, disliked, liked, skipped) {
                   if (marked(loved, breakfast)) score -= 25;
                   if (marked(loved, lunch)) score -= 25;
                   if (marked(loved, dinner)) score -= 25;
-                  if (dinner.style === "Slow Cooker" || dinner.style === "Casserole") score -= 8;
                   if (!best || score < best.score) {
                     best = {
                       score,
