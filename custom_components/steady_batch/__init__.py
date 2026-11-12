@@ -60,13 +60,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_register_card(hass: HomeAssistant) -> None:
     if hass.data.get(CARD_KEY):
         return
-    path = Path(__file__).parent / "www" / "steady-batch-card.js"
-    if not path.is_file():
+    root = Path(__file__).parent
+    card = root / "www" / "steady-batch-card.js"
+    recipes = root / "recipes"
+    if not card.is_file():
         return
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig("/steady_batch/steady-batch-card.js", str(path), False)]
-    )
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=14")
+    paths = [StaticPathConfig("/steady_batch/steady-batch-card.js", str(card), False)]
+    if recipes.is_dir():
+        paths.append(StaticPathConfig("/steady_batch/recipes", str(recipes), False))
+    await hass.http.async_register_static_paths(paths)
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=16")
     hass.data[CARD_KEY] = True
 
 

@@ -26,7 +26,9 @@ Add the grocery list:
 type: custom:steady-batch-grocery
 ```
 
-The grocery card has **Print** and **Send**. The calendar stays empty until you tap **Recommended meal plan** on the meal card, or send a plan from the app. The grocery list is built from those meals.
+The meal card shows the week, opens the recipe under the meal you tap, and builds the grocery list on the same card.
+
+Add the meal card:
 
 ## Install without HACS
 
