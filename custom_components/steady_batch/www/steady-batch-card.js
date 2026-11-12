@@ -316,9 +316,17 @@ class SteadyBatchCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._built) this._build();
+    const stamp = hass.states["sensor.steady_batch_today"]?.attributes?.updated || hass.states["sensor.steady_batch_today"]?.last_updated || "";
     if (!this._loaded) {
       this._loaded = true;
+      this._stamp = stamp;
       this._refresh();
+      return;
+    }
+    if (stamp && stamp !== this._stamp) {
+      this._stamp = stamp;
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = setTimeout(() => this._refresh(), 400);
     }
   }
 
@@ -955,9 +963,17 @@ class SteadyBatchGroceryCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._built) this._build();
+    const stamp = hass.states["sensor.steady_batch_today"]?.attributes?.updated || hass.states["sensor.steady_batch_today"]?.last_updated || "";
     if (!this._loaded) {
       this._loaded = true;
+      this._stamp = stamp;
       this._refresh();
+      return;
+    }
+    if (stamp && stamp !== this._stamp) {
+      this._stamp = stamp;
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = setTimeout(() => this._refresh(), 400);
     }
   }
 

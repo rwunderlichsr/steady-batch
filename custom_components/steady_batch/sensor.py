@@ -34,6 +34,7 @@ class TodayMealsSensor(SensorEntity):
 
     def __init__(self, entry: ConfigEntry, store: MealStore) -> None:
         self._store = store
+        self._updated = ""
         self._attr_unique_id = f"{entry.entry_id}-today"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -45,10 +46,12 @@ class TodayMealsSensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, SIGNAL, lambda: self.async_write_ha_state()
-            )
+            async_dispatcher_connect(self.hass, SIGNAL, self._async_touched)
         )
+
+    def _async_touched(self) -> None:
+        self._updated = dt_util.utcnow().isoformat()
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> int:
@@ -59,7 +62,7 @@ class TodayMealsSensor(SensorEntity):
         meals = self._today()
         protein = sum(self._number(event, "protein") for event in meals.values() if event)
         goal = self._store.goal
-        attributes: dict = {"protein": protein, "goal": goal or ""}
+        attributes: dict = {"protein": protein, "goal": goal or "", "updated": self._updated}
         if goal:
             attributes["left"] = goal - self.native_value
         for meal in MEALS:
