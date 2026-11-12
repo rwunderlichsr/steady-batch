@@ -24,8 +24,9 @@ function shoppingLines(planned, recipes, dates) {
   return [...counts.entries()].map(([line, count]) => (count > 1 ? `${count} × ${line}` : line));
 }
 
-function planDays(goal, recipes, count, disliked) {
+function planDays(goal, recipes, count, disliked, liked) {
   const blocked = disliked || new Set();
+  const loved = liked || new Set();
   const used = new Set();
   const byMeal = Object.fromEntries(MEALS.map((meal) => [meal, recipes.filter((recipe) => recipe.meal === meal)]));
   const days = [];
@@ -54,6 +55,10 @@ function planDays(goal, recipes, count, disliked) {
                   let score = Math.abs(diff);
                   if (diff < -100) score += 30;
                   if (allProtein < 100) score += 70;
+                  if (loved.has(breakfast.name)) score -= 25;
+                  if (loved.has(lunch.name)) score -= 25;
+                  if (loved.has(dinner.name)) score -= 25;
+                  if (dinner.style === "Slow Cooker" || dinner.style === "Casserole") score -= 8;
                   if (!best || score < best.score) {
                     best = {
                       score,
@@ -133,7 +138,7 @@ class SteadyBatchCard extends HTMLElement {
           <label>Daily calories
             <input id="goal" inputmode="numeric" placeholder="From Hume or MyFitnessPal" />
           </label>
-          <button id="plan" type="button">Plan this week</button>
+          <button id="plan" type="button">Recommended meal plan</button>
           <input id="file" type="file" accept="application/json,.json" />
           <button id="load" type="button">Load plan from the app</button>
           <p class="status" id="status"></p>
@@ -174,7 +179,7 @@ class SteadyBatchCard extends HTMLElement {
       if (!span) return;
       this._span = span;
       this._mark(root.getElementById("span"), "span", span);
-      this._planButton.textContent = span === "month" ? "Plan this month" : "Plan this week";
+      this._planButton.textContent = span === "month" ? "Recommended month" : "Recommended meal plan";
       this._render();
     });
     root.getElementById("shop-span").addEventListener("click", (event) => {
@@ -370,8 +375,9 @@ class SteadyBatchCard extends HTMLElement {
   }
 
   async _plan() {
-    const goal = Number(this._goal.value);
-    if (!goal || goal < 800) {
+    const goal = Number(this._goal.value) || 1600;
+    if (!this._goal.value) this._goal.value = "1600";
+    if (goal < 800) {
       this._status.textContent = "Enter the daily calorie number from Hume or MyFitnessPal.";
       return;
     }
@@ -379,7 +385,8 @@ class SteadyBatchCard extends HTMLElement {
     this._status.textContent = "Planning…";
     try {
       const blocked = new Set(Object.entries(this._ratings || {}).filter((entry) => entry[1] === "dislike").map((entry) => entry[0]));
-      const days = planDays(goal, await this._ensureRecipes(), dates.length, blocked);
+      const loved = new Set(Object.entries(this._ratings || {}).filter((entry) => entry[1] === "like").map((entry) => entry[0]));
+      const days = planDays(goal, await this._ensureRecipes(), dates.length, blocked, loved);
       const meals = [];
       dates.forEach((day, index) => {
         for (const meal of MEALS) {
@@ -395,7 +402,7 @@ class SteadyBatchCard extends HTMLElement {
         dates: dates.map((day) => day.iso),
       });
       await this._refresh();
-      this._status.textContent = dates.length > 7 ? "This month is planned on the card." : "This week is planned on the card.";
+      this._status.textContent = dates.length > 7 ? "Recommended month is on the card." : "Recommended meal plan is on the card.";
     } catch (error) {
       this._status.textContent = error && error.message ? error.message : "Couldn't plan. Add the Steady Batch integration first.";
     }
