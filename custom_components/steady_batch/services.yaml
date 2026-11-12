@@ -200,6 +200,14 @@ set_meal:
         - "Chicken and Blue Cheese"
         - "Beef and Cheddar"
         - "Egg and Cheddar"
+        - "Chicken Spinach Egg Casserole"
+        - "Beef and Egg Casserole"
+        - "Turkey Pepper Egg Casserole"
+        - "Chicken and Broccoli Casserole"
+        - "Tuna Egg Casserole"
+        - "Beef and Cauliflower Casserole"
+        - "Pork and Cabbage Casserole"
+        - "Salmon Spinach Egg Casserole"
     servings:
       name: Servings
       selector:
