@@ -29,6 +29,18 @@ views:
             name: This week
             view: menu
             span: week
+  - title: Month
+    path: month
+    icon: mdi:calendar-month
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: custom:steady-batch-card
+            name: This month
+            view: menu
+            span: month
   - title: Plan
     path: plan
     icon: mdi:tune-variant

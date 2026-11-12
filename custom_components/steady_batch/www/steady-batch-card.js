@@ -357,9 +357,10 @@ class SteadyBatchCard extends HTMLElement {
             <button type="button" data-view="plan">Plan</button>
           </nav>
           <div id="view-menu">
-            <div class="seg two" id="menu-span">
+            <div class="seg" id="menu-span">
               <button type="button" data-span="day">Day</button>
               <button type="button" data-span="week" aria-pressed="true">Week</button>
+              <button type="button" data-span="month">Month</button>
             </div>
             <div id="days"></div>
           </div>
@@ -435,7 +436,7 @@ class SteadyBatchCard extends HTMLElement {
       root.getElementById("title").textContent = this._name || titles[this._fixedSpan];
       this._planButton.textContent = this._fixedSpan === "month" ? "Plan the month" : this._fixedSpan === "day" ? "Plan today" : "Plan the week";
       this._span = this._fixedSpan;
-      this._mark(root.getElementById("menu-span"), "span", this._span === "month" ? "week" : this._span);
+      this._mark(root.getElementById("menu-span"), "span", this._span);
     }
     try {
       const saved = JSON.parse(localStorage.getItem("steady-batch-skip") || "[]");
@@ -672,7 +673,7 @@ class SteadyBatchCard extends HTMLElement {
     const dayBlock = (iso, label, upcoming) => {
       const totals = this._dayTotals(iso);
       const isToday = iso === todayIso && !upcoming;
-      const showMeals = this._spanCount() <= 7 || isToday || this._openDay === iso || upcoming;
+      const showMeals = true;
       const preview = MEALS.map((meal) => {
         const slot = this._planned[iso + "|" + meal];
         return slot && slot.name ? slot.name : "";
@@ -693,9 +694,7 @@ class SteadyBatchCard extends HTMLElement {
           </button>`;
       }).join("");
       if (!isToday && !preview && this._spanCount() > 7 && !upcoming) return "";
-      const head = this._spanCount() > 7 && !isToday && !upcoming
-        ? `<button class="dayhead" type="button" data-day="${iso}" aria-expanded="${showMeals ? "true" : "false"}"><strong>${esc(label)}${totals.calories ? ` · ${Math.round(totals.calories)} cal` : ""}</strong><em>${esc(preview || "Nothing planned")}</em></button>`
-        : `<div class="daytop"><h3>${isToday ? "Today" : esc(label)}</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : ""}</span></div>`;
+      const head = `<div class="daytop"><h3>${isToday ? "Today" : esc(label)}</h3><span class="tally">${totals.calories ? `${Math.round(totals.calories)} cal` : ""}</span></div>`;
       return `<section class="day${isToday ? " today" : ""}${upcoming ? " upcoming" : ""}">${head}${showMeals ? meals : ""}</section>`;
     };
     let html = dates.map(({ iso, label }) => dayBlock(iso, label, false)).join("");
