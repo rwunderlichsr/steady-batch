@@ -4,6 +4,14 @@ function esc(value) {
   return String(value).split("\u0026").join("\u0026amp;").split("<").join("\u0026lt;").split('"').join("\u0026quot;");
 }
 
+function prepLabel(recipe) {
+  const plate = /1 plate/i.test(recipe.servings || "") || String(recipe.key || "").includes("|No cook|");
+  if (plate) return "Assemble when you eat it. Not a cook-ahead meal.";
+  const days = (String(recipe.tips || "").match(/Fridge (\d+)/i) || [])[1] || (/salmon|shrimp|tuna/i.test(recipe.name) ? "2" : "4");
+  const portions = (String(recipe.servings || "").match(/(\d+)\s+portion/i) || [])[1] || "4";
+  return `Make ahead. One cook makes ${portions} portions. Fridge ${days} days.`;
+}
+
 function amount(value) {
   const match = String(value).replace(/,/g, "").match(/\d+(\.\d+)?/);
   return match ? Number(match[0]) : 0;
@@ -331,6 +339,7 @@ class SteadyBatchCard extends HTMLElement {
       <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(item)}</span></label></li>`).join("")}</ul>
       <h3>Make it</h3>
       <ol>${(recipe.instructions || []).map((step) => `<li>${esc(step)}</li>`).join("")}</ol>
+      <p class="note">${esc(prepLabel(recipe))}</p>
       <p class="note">${esc(recipe.doneWhen || "")}</p>`
       : `<p class="note">Nothing planned for that ${esc(this._open.meal.toLowerCase())} yet. Search and tap one.</p>`;
     this._recipe.hidden = false;
