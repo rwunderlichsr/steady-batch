@@ -4,6 +4,18 @@ After you install it and restart Home Assistant, **Meals** is in the sidebar. Th
 
 High protein. Your calorie number from Hume or MyFitnessPal. Slow cooker, sous vide, casserole, no-cook plates, carnivore, and DASH.
 
+## Dashboard
+
+Create a dashboard, open the raw configuration editor, delete what is there, and paste [dashboard.yaml](dashboard.yaml).
+
+Three pages:
+
+- **Today** shows today's four meals beside the grocery list. Tap a meal for the recipe.
+- **Week** shows all seven days, with every meal visible.
+- **Plan** sets calories, proteins to skip, and cooking style.
+
+Update to 1.8.0 and restart before you paste it. The cards have to exist first.
+
 ## The card
 
 One card. Four views across the top.

@@ -255,7 +255,11 @@ const CARD_CSS = `
   button.meal[data-meal="Lunch"] .tick { background: #2f7d5b; }
   button.meal[data-meal="Dinner"] .tick { background: #c45c26; }
   button.meal[data-meal="Snack"] .tick { background: #5d6e88; }
-  .day.today { border-color: transparent; box-shadow: inset 3px 0 0 var(--primary-color); }
+  .mode-day button.meal { min-height: 62px; }
+  .mode-day .dish { font-size: 1.15rem; font-weight: 700; }
+  .mode-day .kcal { font-size: 0.9rem; }
+  .mode-day .day { padding: 16px 14px 8px; }
+  button.back { display: inline-flex; align-items: center; min-height: 32px; margin: 0 0 8px; padding: 0; border: 0; background: transparent; color: var(--primary-color); font: inherit; font-weight: 750; }
   button.meal[aria-pressed="true"], button.meal:hover { background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
   .slotname { font-size: 0.66rem; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
   .dish { font-size: 0.95rem; font-weight: 650; line-height: 1.25; }
@@ -300,6 +304,10 @@ class SteadyBatchCard extends HTMLElement {
     this._config = config || {};
     const span = this._config.span;
     if (span === "day" || span === "week" || span === "month") this._fixedSpan = span;
+    const view = this._config.view;
+    if (view === "menu" || view === "recipe" || view === "shop" || view === "plan") this._lockedView = view;
+    this._name = typeof this._config.name === "string" ? this._config.name : "";
+    if (this._built) this._applyChrome();
   }
 
   set hass(hass) {
@@ -499,8 +507,18 @@ class SteadyBatchCard extends HTMLElement {
     });
     root.getElementById("print").addEventListener("click", () => this._print());
     root.getElementById("send").addEventListener("click", () => this._send());
-    this._show("menu");
+    this._applyChrome();
+    this._show(this._lockedView || "menu");
     this._render();
+  }
+
+  _applyChrome() {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const wrap = root.querySelector(".wrap");
+    if (wrap) wrap.classList.toggle("mode-day", (this._fixedSpan || this._span) === "day");
+    const nav = root.getElementById("views");
+    if (nav) nav.hidden = Boolean(this._lockedView);
   }
 
   _show(view) {
@@ -514,9 +532,8 @@ class SteadyBatchCard extends HTMLElement {
     const titles = { menu: "This week", recipe: "Recipe", shop: "Grocery list", plan: "Plan" };
     const title = root.getElementById("title");
     if (title) {
-      title.textContent = view === "menu"
-        ? (this._spanCount() === 1 ? "Today" : this._spanCount() > 7 ? "This month" : "This week")
-        : (titles[view] || "This week");
+      const menuTitle = this._name || (this._spanCount() === 1 ? "Today" : this._spanCount() > 7 ? "This month" : "This week");
+      title.textContent = view === "menu" ? menuTitle : (titles[view] || menuTitle);
     }
   }
 
@@ -636,7 +653,7 @@ class SteadyBatchCard extends HTMLElement {
     this._paintHeader(dates);
     const title = this.shadowRoot && this.shadowRoot.getElementById("title");
     if (title && this._view === "menu") {
-      title.textContent = this._spanCount() === 1 ? "Today" : this._spanCount() > 7 ? "This month" : "This week";
+      title.textContent = this._name || (this._spanCount() === 1 ? "Today" : this._spanCount() > 7 ? "This month" : "This week");
     }
     const todayIso = dates[0] && dates[0].iso;
     this._days.innerHTML = dates
@@ -731,6 +748,7 @@ class SteadyBatchCard extends HTMLElement {
         </div>`
       : `<p class="note">${this._recipes.length ? "Nothing planned yet. Pick one below." : "Recipes are not on this card yet. Update Steady Batch in HACS and restart Home Assistant."}</p>`;
     sheet.innerHTML = `
+      ${this._lockedView && this._lockedView !== "recipe" ? `<button type="button" class="back" id="back">Back</button>` : ""}
       <h3>${recipe ? esc(recipe.name) : esc(this._open.meal)}</h3>
       ${body}
       <details>
@@ -741,6 +759,8 @@ class SteadyBatchCard extends HTMLElement {
         <div class="matches">${matchButtons || "<p class='note'>No match in the recipe list.</p>"}</div>
         ${slot && slot.name ? `<button type="button" id="clear-slot">Clear this meal</button>` : ""}
       </details>`;
+    const back = sheet.querySelector("#back");
+    if (back) back.addEventListener("click", () => this._show(this._lockedView || "menu"));
     const opened = { iso: this._open.iso, meal: this._open.meal };
     const swap = sheet.querySelector("details");
     if (swap) swap.open = Boolean(this._swapOpen);
@@ -938,18 +958,19 @@ class SteadyBatchGroceryCard extends HTMLElement {
 
   _build() {
     this._built = true;
-    this._span = "week";
+    const span = this._config && this._config.span;
+    this._span = span === "day" || span === "month" ? span : "week";
     const root = this.attachShadow({ mode: "open" });
     root.innerHTML = `
       <ha-card>
         <style>${CARD_CSS}</style>
         <div class="wrap">
-          <div class="head"><p class="kicker">Steady Batch</p><h2>Grocery list</h2></div>
+          <div class="head"><p class="kicker">Steady Batch</p><h2 id="gtitle">Grocery list</h2></div>
           <div class="pad">
             <p class="status" id="status"></p>
             <div class="seg" id="span">
               <button type="button" data-span="day">Today</button>
-              <button type="button" data-span="week" aria-pressed="true">Week</button>
+              <button type="button" data-span="week">Week</button>
               <button type="button" data-span="month">Month</button>
             </div>
             <ul class="list" id="list"></ul>
@@ -962,8 +983,12 @@ class SteadyBatchGroceryCard extends HTMLElement {
       </ha-card>`;
     this._status = root.getElementById("status");
     this._list = root.getElementById("list");
+    if (this._config && this._config.name) root.getElementById("gtitle").textContent = this._config.name;
     this._planned = {};
     this._recipes = [];
+    root.querySelectorAll("#span button").forEach((button) => {
+      button.setAttribute("aria-pressed", button.dataset.span === this._span ? "true" : "false");
+    });
     root.getElementById("span").addEventListener("click", (event) => {
       const span = event.target && event.target.dataset && event.target.dataset.span;
       if (!span) return;

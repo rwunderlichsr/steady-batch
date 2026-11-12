@@ -1,0 +1,42 @@
+title: Meals
+views:
+  - title: Today
+    path: today
+    icon: mdi:silverware-fork-knife
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: custom:steady-batch-card
+            name: Today
+            view: menu
+            span: day
+      - type: grid
+        cards:
+          - type: custom:steady-batch-grocery
+            name: Grocery
+            span: day
+  - title: Week
+    path: week
+    icon: mdi:calendar-week
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: custom:steady-batch-card
+            name: This week
+            view: menu
+            span: week
+  - title: Plan
+    path: plan
+    icon: mdi:tune-variant
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: custom:steady-batch-card
+            name: Plan
+            view: plan
