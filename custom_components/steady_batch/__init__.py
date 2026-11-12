@@ -69,7 +69,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     if recipes.is_dir():
         paths.append(StaticPathConfig("/steady_batch/recipes", str(recipes), False))
     await hass.http.async_register_static_paths(paths)
-    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=17")
+    add_extra_js_url(hass, "/steady_batch/steady-batch-card.js?v=18")
     hass.data[CARD_KEY] = True
 
 

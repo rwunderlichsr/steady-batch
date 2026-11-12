@@ -1,5 +1,6 @@
 const MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"];
 const PROTEINS = ["Chicken", "Turkey", "Beef", "Pork", "Salmon", "Eggs", "Yogurt", "Cottage cheese", "Tuna", "Shrimp", "White fish", "Beans"];
+const STYLES = ["Slow Cooker", "Sous Vide", "Casserole", "No cook", "Carnivore", "DASH"];
 
 function esc(value) {
   return String(value).split("\u0026").join("\u0026amp;").split("<").join("\u0026lt;").split('"').join("\u0026quot;");
@@ -47,16 +48,23 @@ function ratingOf(map, recipe) {
   return map[recipe.key] || map[recipe.name] || "";
 }
 
-function planDays(goal, recipes, count, disliked, liked, skipped) {
+function planDays(goal, recipes, count, disliked, liked, skipped, styles) {
   const blocked = disliked || new Set();
   const loved = liked || new Set();
   const out = skipped || new Set();
+  const only = styles && styles.size ? styles : null;
   const used = new Set();
   const byMeal = Object.fromEntries(MEALS.map((meal) => [meal, recipes.filter((recipe) => recipe.meal === meal)]));
   const days = [];
   for (let salt = 0; salt < count; salt += 1) {
     const choices = (meal) => {
-      const all = (byMeal[meal] || []).filter((recipe) => !marked(blocked, recipe) && !out.has(String(recipe.key || "").split("|")[1]));
+      const all = (byMeal[meal] || []).filter((recipe) => {
+        if (marked(blocked, recipe)) return false;
+        const parts = String(recipe.key || "").split("|");
+        if (out.has(parts[1])) return false;
+        if (only && !only.has(parts[2])) return false;
+        return true;
+      });
       const fresh = all.filter((recipe) => !used.has(recipe.name));
       const source = fresh.length >= 4 ? fresh : all;
       const start = source.length ? (salt * 5) % source.length : 0;
@@ -218,12 +226,16 @@ const CARD_CSS = `
   .bar { height: 6px; margin-top: 12px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--primary-text-color) 12%, transparent); }
   .bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--primary-color); }
   .bar.over i { background: var(--error-color, #c4473a); }
-  .status.pad { padding: 0 16px; }
+  .nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0 12px 12px; padding: 4px; border-radius: 14px; background: color-mix(in srgb, var(--primary-text-color) 7%, transparent); }
+  .nav button { min-height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 0.78rem; font-weight: 750; }
+  .nav button[aria-pressed="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff); }
+  .panel { padding: 0 16px 8px; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; margin: 0 0 10px; border-radius: 12px; background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
   .seg button { min-height: 34px; border: 0; border-radius: 9px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 0.85rem; font-weight: 650; }
   .seg button[aria-pressed="true"] { background: var(--card-background-color); color: var(--primary-color); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
   .planrow { display: grid; grid-template-columns: 7.5rem 1fr; gap: 8px; align-items: end; margin: 0 0 8px; }
-  label.field { display: block; margin: 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  label.field, p.field { display: block; margin: 8px 0 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .status.pad { padding: 0 16px; }
   input, select { width: 100%; min-height: 42px; margin-top: 4px; border-radius: 12px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 1rem; padding: 0 10px; }
   #plan, #print { min-height: 42px; border: 0; border-radius: 12px; background: var(--primary-color); color: var(--text-primary-color, #fff); font: inherit; font-weight: 700; }
   .status { min-height: 1.2em; margin: 0 0 8px; color: var(--secondary-text-color); font-size: 0.82rem; }
@@ -263,7 +275,8 @@ const CARD_CSS = `
   details summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
   .chips button { width: auto; min-height: 30px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--divider-color); background: transparent; color: inherit; font: inherit; font-size: 0.78rem; }
-  .chips button[aria-pressed="true"] { text-decoration: line-through; color: var(--secondary-text-color); }
+  .chips button[aria-pressed="true"] { background: color-mix(in srgb, var(--primary-color) 16%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
+  #skip button[aria-pressed="true"] { text-decoration: line-through; color: var(--secondary-text-color); background: transparent; border-color: var(--divider-color); }
   .links button { border: 0; padding: 0 2px; min-height: 32px; color: var(--primary-color); background: transparent; }
   .shop { margin: 12px 16px 8px; padding-top: 8px; border-top: 1px solid var(--divider-color); }
   .shop h2 { font-size: 1.2rem; }
@@ -311,41 +324,57 @@ class SteadyBatchCard extends HTMLElement {
             <div class="bar" aria-hidden="true"><i id="bar"></i></div>
           </div>
           <p class="status pad" id="status">Loading your menu…</p>
-          <div id="days"></div>
-          <section class="shop">
-            <h2>Grocery list</h2>
-            <p class="status" id="gstatus"></p>
-            <div class="seg" id="gspan">
-              <button type="button" data-span="day">Today</button>
-              <button type="button" data-span="week" aria-pressed="true">Week</button>
-              <button type="button" data-span="month">Month</button>
-            </div>
-            <ul class="list" id="glist"></ul>
-            <div class="actions">
-              <button id="print" type="button">Print</button>
-              <button id="send" type="button">Send</button>
+          <nav class="nav" id="views">
+            <button type="button" data-view="menu" aria-pressed="true">Menu</button>
+            <button type="button" data-view="recipe">Recipe</button>
+            <button type="button" data-view="shop">Shop</button>
+            <button type="button" data-view="plan">Plan</button>
+          </nav>
+          <div id="view-menu"><div id="days"></div></div>
+          <div id="view-recipe" hidden>
+            <div class="panel" id="recipe-body"><p class="note">Tap a meal on the menu.</p></div>
+          </div>
+          <section class="shop" id="view-shop" hidden>
+            <div class="panel">
+              <h2>Grocery list</h2>
+              <p class="status" id="gstatus"></p>
+              <div class="seg" id="gspan">
+                <button type="button" data-span="day">Today</button>
+                <button type="button" data-span="week" aria-pressed="true">Week</button>
+                <button type="button" data-span="month">Month</button>
+              </div>
+              <ul class="list" id="glist"></ul>
+              <div class="actions">
+                <button id="print" type="button">Print</button>
+                <button id="send" type="button">Send</button>
+              </div>
             </div>
           </section>
-          <details class="tools" id="planner">
-            <summary>Change the plan</summary>
-            <div class="seg" id="span">
-              <button type="button" data-span="day">Day</button>
-              <button type="button" data-span="week" aria-pressed="true">Week</button>
-              <button type="button" data-span="month">Month</button>
+          <section id="view-plan" hidden>
+            <div class="panel">
+              <h2>Build the menu</h2>
+              <p class="note">Calories from Hume or MyFitnessPal. Styles and proteins limit the next plan. Likes are used first. Dislikes are left out.</p>
+              <div class="seg" id="span">
+                <button type="button" data-span="day">Day</button>
+                <button type="button" data-span="week" aria-pressed="true">Week</button>
+                <button type="button" data-span="month">Month</button>
+              </div>
+              <div class="planrow">
+                <label class="field">Calories
+                  <input id="goal" inputmode="numeric" placeholder="1600" />
+                </label>
+                <button id="plan" type="button">Plan the week</button>
+              </div>
+              <p class="field">How it is cooked</p>
+              <div class="chips" id="styles"></div>
+              <p class="field">Leave a protein out</p>
+              <div class="chips" id="skip"></div>
+              <div class="links">
+                <button id="refresh" type="button">Refresh</button>
+                <button id="load" type="button">Load a plan file</button>
+              </div>
             </div>
-            <div class="planrow">
-              <label class="field">Calories
-                <input id="goal" inputmode="numeric" placeholder="1600" />
-              </label>
-              <button id="plan" type="button">Plan the week</button>
-            </div>
-            <p class="note">Tap a protein to leave it off the next plan.</p>
-            <div class="chips" id="skip"></div>
-            <div class="links">
-              <button id="refresh" type="button">Refresh</button>
-              <button id="load" type="button">Load a plan file</button>
-            </div>
-          </details>
+          </section>
           <input id="file" type="file" accept="application/json,.json" />
         </div>
       </ha-card>`;
@@ -366,6 +395,8 @@ class SteadyBatchCard extends HTMLElement {
     this._ratings = {};
     this._query = "";
     this._skip = new Set();
+    this._styles = new Set();
+    this._view = "menu";
     const titles = { day: "Today", week: "This week", month: "This month" };
     if (this._fixedSpan) {
       root.getElementById("span").hidden = true;
@@ -401,6 +432,39 @@ class SteadyBatchCard extends HTMLElement {
       });
     };
     this._paintSkip();
+    const styles = root.getElementById("styles");
+    try {
+      const savedStyles = JSON.parse(localStorage.getItem("steady-batch-styles") || "[]");
+      if (Array.isArray(savedStyles)) savedStyles.filter((name) => STYLES.includes(name)).forEach((name) => this._styles.add(name));
+    } catch (error) {
+      this._styles = new Set();
+    }
+    STYLES.forEach((name) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.style = name;
+      button.addEventListener("click", () => {
+        if (this._styles.has(name)) this._styles.delete(name);
+        else this._styles.add(name);
+        localStorage.setItem("steady-batch-styles", JSON.stringify([...this._styles]));
+        this._paintStyles();
+      });
+      styles.appendChild(button);
+    });
+    this._paintStyles = () => {
+      styles.querySelectorAll("button").forEach((button) => {
+        const on = this._styles.has(button.dataset.style);
+        button.textContent = button.dataset.style;
+        button.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    };
+    this._paintStyles();
+    root.getElementById("views").addEventListener("click", (event) => {
+      const view = event.target && event.target.dataset && event.target.dataset.view;
+      if (!view) return;
+      this._show(view);
+      if (view === "recipe") this._fillSheet();
+    });
     root.getElementById("plan").addEventListener("click", () => this._plan());
     root.getElementById("refresh").addEventListener("click", () => {
       this._recipes = [];
@@ -426,7 +490,21 @@ class SteadyBatchCard extends HTMLElement {
     });
     root.getElementById("print").addEventListener("click", () => this._print());
     root.getElementById("send").addEventListener("click", () => this._send());
+    this._show("menu");
     this._render();
+  }
+
+  _show(view) {
+    this._view = view;
+    const root = this.shadowRoot;
+    ["menu", "recipe", "shop", "plan"].forEach((name) => {
+      const panel = root.getElementById(`view-${name}`);
+      if (panel) panel.hidden = name !== view;
+    });
+    this._mark(root.getElementById("views"), "view", view);
+    const titles = { menu: "Today's menu", recipe: "Recipe", shop: "Grocery list", plan: "Plan" };
+    const title = root.getElementById("title");
+    if (title) title.textContent = titles[view] || "Today's menu";
   }
 
   _mark(container, key, value) {
@@ -494,15 +572,10 @@ class SteadyBatchCard extends HTMLElement {
       absorbDescriptions(planned, this._recipes);
       const sensor = this._hass.states["sensor.steady_batch_today"];
       if (sensor && sensor.attributes && sensor.attributes.goal && !this._goal.value) this._goal.value = sensor.attributes.goal;
-      const planner = this.shadowRoot && this.shadowRoot.getElementById("planner");
-      if (planner && !this._plannerSet) {
-        this._plannerSet = true;
-        planner.open = !Object.keys(planned).length;
-      }
       this._render();
       const count = Object.keys(planned).length;
-      if (!count) this._status.textContent = this._recipes.length ? "No meals on the menu yet. Open Change the plan." : "Menu did not load. Update Steady Batch in HACS, then restart Home Assistant.";
-      else this._status.textContent = "Tap a meal for the recipe. Grocery list is under the menu.";
+      if (!count) this._status.textContent = this._recipes.length ? `${this._recipes.length} meals ready. Open Plan to build the menu.` : "Meals did not load. Update Steady Batch, then restart Home Assistant.";
+      else this._status.textContent = `${count} meals on the menu. Tap one for the recipe.`;
     } catch (error) {
       this._status.textContent = "Add the Steady Batch integration, then restart Home Assistant.";
     }
@@ -557,12 +630,11 @@ class SteadyBatchCard extends HTMLElement {
           const title = slot && slot.name ? `${slot.name}${count === 2 ? " ×2" : ""}` : "Add";
           const kcal = recipe ? `${Math.round(amount(recipe.calories) * count)}` : "";
           return `<div class="slotwrap">
-            <button class="meal${slot && slot.name ? "" : " empty"}" type="button" data-date="${iso}" data-meal="${meal}" aria-pressed="${open ? "true" : "false"}" aria-expanded="${open ? "true" : "false"}">
+            <button class="meal${slot && slot.name ? "" : " empty"}" type="button" data-date="${iso}" data-meal="${meal}" aria-pressed="${open ? "true" : "false"}">
               <span class="slotname">${meal}</span>
               <span class="dish">${esc(title)}</span>
               <span class="kcal">${kcal}</span>
             </button>
-            ${open ? `<div class="sheet" id="sheet"></div>` : ""}
           </div>`;
         }).join("");
         if (!isToday && !preview && !expanded) return "";
@@ -585,17 +657,22 @@ class SteadyBatchCard extends HTMLElement {
         this._query = "";
         this._swapOpen = false;
         this._render();
-        const sheet = this._days.querySelector("#sheet");
-        if (sheet) sheet.scrollIntoView({ block: "nearest" });
+        if (this._open) {
+          this._show("recipe");
+          this._fillSheet();
+        }
       });
     });
-    this._fillSheet();
     this._paintGrocery();
   }
 
   _fillSheet() {
-    const sheet = this._days && this._days.querySelector("#sheet");
-    if (!sheet || !this._open) return;
+    const sheet = this.shadowRoot && this.shadowRoot.getElementById("recipe-body");
+    if (!sheet) return;
+    if (!this._open) {
+      sheet.innerHTML = `<p class="note">Tap a meal on the menu. The recipe, the ingredients, and the steps open here.</p>`;
+      return;
+    }
     const slot = this._planned[this._open.iso + "|" + this._open.meal];
     const recipe = slot ? findRecipe(this._recipes, slot.name) || recipeFromDescription(slot.description, slot.name) : null;
     const choices = (this._recipes || []).filter((item) => item.meal === this._open.meal || String(item.key || "").startsWith(this._open.meal + "|"));
@@ -646,7 +723,7 @@ class SteadyBatchCard extends HTMLElement {
       this._query = find.value;
       this._swapOpen = true;
       this._fillSheet();
-      const next = this._days.querySelector("#find");
+      const next = this.shadowRoot.getElementById("recipe-body").querySelector("#find");
       if (next) {
         next.focus();
         const end = next.value.length;
@@ -747,7 +824,7 @@ class SteadyBatchCard extends HTMLElement {
       if (!this._recipes.length) throw new Error("Recipes did not load. Update Steady Batch in HACS and restart Home Assistant.");
       const blocked = new Set(Object.entries(this._ratings || {}).filter((entry) => entry[1] === "dislike").map((entry) => entry[0]));
       const loved = new Set(Object.entries(this._ratings || {}).filter((entry) => entry[1] === "like").map((entry) => entry[0]));
-      const days = planDays(goal, this._recipes, dates.length, blocked, loved, this._skip);
+      const days = planDays(goal, this._recipes, dates.length, blocked, loved, this._skip, this._styles);
       const meals = [];
       dates.forEach((day, index) => {
         for (const meal of MEALS) {
@@ -760,7 +837,8 @@ class SteadyBatchCard extends HTMLElement {
       await this._hass.callService("steady_batch", "import_plan", { meals, replace: false, dates: dates.map((day) => day.iso) });
       this._didAuto = false;
       await this._refresh();
-      this._status.textContent = dates.length > 7 ? "Month is on the card. Tap a meal for the recipe." : "Plan is on the card. Tap a meal for the recipe. Grocery list is below.";
+      this._show("menu");
+      this._status.textContent = dates.length > 7 ? "Month is on the menu. Tap a meal for the recipe." : "Menu is ready. Tap a meal for the recipe. Shop has the grocery list.";
     } catch (error) {
       this._status.textContent = error && error.message ? error.message : "Couldn't plan. Add the Steady Batch integration first.";
     }
