@@ -65,6 +65,16 @@ def describe(recipe: dict, servings: int = 1) -> str:
         )
     else:
         reheat = "COOK WHEN YOU EAT IT\nThis one is not a make-ahead meal.\n\n"
+    if ahead:
+        return (
+            f"{recipe['name']}\n"
+            f"{reheat}"
+            f"{portion} · {protein}g protein · {calories} cal\n"
+            f"calories:{calories}\n"
+            f"protein:{protein}\n"
+            f"servings:{servings}\n"
+            f"recipe_key:{recipe['key']}"
+        )
     return (
         f"{recipe['name']}\n"
         f"{reheat}"

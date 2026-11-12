@@ -845,14 +845,14 @@ class SteadyBatchCard extends HTMLElement {
           <span>${esc(recipe.carbs || "")} carbs</span>
         </div>
         <p class="note">${esc(numberSource(recipe))}</p>
-        <h4>Ingredients</h4>
-        <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(count === 2 ? item : item)}</span></label></li>`).join("") || "<li>No ingredients on this one.</li>"}</ul>
         ${reheatBlock}
-        <h4>${heat ? "Cook it the first time" : "Make it"}</h4>
+        ${heat ? "" : `<h4>Ingredients</h4>
+        <ul>${(recipe.ingredients || []).map((item) => `<li><label class="check"><input type="checkbox" /> <span>${esc(item)}</span></label></li>`).join("") || "<li>No ingredients on this one.</li>"}</ul>
+        <h4>Make it</h4>
         ${methodButtons}
         <ol>${(way ? way.steps : []).map((step) => `<li>${esc(step)}</li>`).join("") || "<li>No steps on this one.</li>"}</ol>
         <p class="note">${esc(way ? way.note : "")}</p>
-        ${recipe.doneWhen ? `<p class="note">${esc(recipe.doneWhen)}</p>` : ""}
+        ${recipe.doneWhen ? `<p class="note">${esc(recipe.doneWhen)}</p>` : ""}`}
         <div class="rate">
           <button type="button" data-rate="like" aria-pressed="${rating === "like" ? "true" : "false"}">Like</button>
           <button type="button" data-rate="dislike" aria-pressed="${rating === "dislike" ? "true" : "false"}">Dislike</button>
