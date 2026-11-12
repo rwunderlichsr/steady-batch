@@ -289,10 +289,13 @@ class SteadyBatchCard extends HTMLElement {
         return `<section class="day"><h3>${esc(label)}</h3>${meals}</section>`;
       })
       .join("");
-    this._days.querySelectorAll("button").forEach((button) => {
+    this._days.querySelectorAll("button.meal").forEach((button) => {
       button.addEventListener("click", () => {
-        this._open = { iso: button.dataset.date, meal: button.dataset.meal };
+        const same = this._open && this._open.iso === button.dataset.date && this._open.meal === button.dataset.meal;
+        this._open = same ? null : { iso: button.dataset.date, meal: button.dataset.meal };
+        this._query = "";
         this._render();
+        if (this._open && this._recipe) this._recipe.scrollIntoView({ block: "start" });
       });
     });
     this._renderRecipe();
