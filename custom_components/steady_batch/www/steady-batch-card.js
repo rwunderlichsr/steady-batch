@@ -704,6 +704,13 @@ class SteadyBatchCard extends HTMLElement {
       const sensor = this._hass.states["sensor.steady_batch_today"];
       if (sensor && sensor.attributes && sensor.attributes.goal && !this._goal.value) this._goal.value = sensor.attributes.goal;
       if (sensor && sensor.attributes && sensor.attributes.phone_plan && this._feed && !this._feed.value) this._feed.value = sensor.attributes.phone_plan;
+      if (!Object.keys(planned).length && sensor && Array.isArray(sensor.attributes && sensor.attributes.meals)) {
+        const today = new Date().toLocaleDateString("en-CA");
+        for (const item of sensor.attributes.meals) {
+          if (!item || !item.meal || !item.name) continue;
+          planned[today + "|" + item.meal] = { name: item.name, servings: 1, description: "" };
+        }
+      }
       this._render();
       const count = Object.keys(planned).length;
       if (!count) this._status.textContent = this._recipes.length ? `${this._recipes.length} meals ready. Open Plan to build the menu.` : "Meals did not load. Update Steady Batch, then restart Home Assistant.";
@@ -1044,7 +1051,7 @@ class SteadyBatchCard extends HTMLElement {
     this._status.textContent = "Loading…";
     try {
       const body = JSON.parse(await file.text());
-      const meals = Array.isArray(body) ? body : body.meals;
+      const meals = Array.isArray(body) ? body : body && body.meals;
       if (!Array.isArray(meals) || !meals.length) throw new Error("That file has no meals.");
       await this._hass.callService("steady_batch", "import_plan", { meals });
       this._didAuto = false;
