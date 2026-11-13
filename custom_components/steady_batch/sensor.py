@@ -63,15 +63,18 @@ class TodayMealsSensor(SensorEntity):
         protein = sum(self._number(event, "protein") for event in meals.values() if event)
         goal = self._store.goal
         attributes: dict = {"protein": protein, "goal": goal or "", "updated": self._updated}
+        planned = []
+        for meal in MEALS:
+            event = meals[meal]
+            name = event["summary"].split(": ", 1)[-1] if event else ""
+            attributes[meal.lower()] = name or "Open"
+            if event:
+                planned.append({"meal": meal, "name": name})
+        attributes["meals"] = planned
         if self._store.feed_url:
             attributes["phone_plan"] = self._store.feed_url
         if goal:
             attributes["left"] = goal - self.native_value
-        for meal in MEALS:
-            event = meals[meal]
-            attributes[meal.lower()] = (
-                event["summary"].split(": ", 1)[-1] if event else "Open"
-            )
         return attributes
 
     def _number(self, event: dict, field: str) -> int:
